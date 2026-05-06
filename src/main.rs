@@ -1,3 +1,5 @@
+mod stack_pair;
+
 use std::env;
 use std::process;
 
@@ -11,9 +13,17 @@ struct Config {
     values: Vec<i32>,
 }
 
+impl Config {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            values: Vec::with_capacity(capacity),
+            ..Default::default() 
+        }
+    }
+}
+
 fn main() {
-    let mut config = Config::default();
-    config.values.reserve(500);
+    let mut config = Config::with_capacity(500);
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
@@ -81,5 +91,4 @@ fn main() {
     }
 
     println!("Config successfully parsed: {:#?}", config);
-    println!("Processed {} integer values.", config.values.len());
 }
