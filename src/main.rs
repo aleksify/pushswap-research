@@ -6,6 +6,7 @@ struct Config {
     simple: bool,
     medium: bool,
     complex: bool,
+    adaptive: bool,
     bench: bool,
     values: Vec<i32>,
 }
@@ -16,25 +17,32 @@ fn main() {
     for arg in env::args().skip(1) {
         match arg.as_str() {
             "--simple" => {
-                if config.medium || config.complex {
+                if config.medium || config.complex || config.adaptive {
                     eprintln!("Error: simple, medium, complex, or adaptive cannot be used together");
                     process::exit(1);
                 }
                 config.simple = true;
             }
             "--medium" => {
-                if config.simple || config.complex {
+                if config.simple || config.complex || config.adaptive {
                     eprintln!("Error: simple, medium, complex, or adaptive cannot be used together");
                     process::exit(1);
                 }
                 config.medium = true;
             }
             "--complex" => {
-                if config.simple || config.medium {
+                if config.simple || config.medium || config.adaptive {
                     eprintln!("Error: simple, medium, complex, or adaptive cannot be used together");
                     process::exit(1);
                 }
                 config.complex = true;
+            }
+            "--adaptive" => {
+                if config.simple || config.medium || config.complex {
+                    eprintln!("Error: simple, medium, complex, or adaptive cannot be used together");
+                    process::exit(1);
+                }
+                config.adaptive = true;
             }
             "--bench" => {
                 config.bench = true;
