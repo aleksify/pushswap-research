@@ -13,6 +13,7 @@ struct Config {
 
 fn main() {
     let mut config = Config::default();
+    config.values.reserve(500);
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
