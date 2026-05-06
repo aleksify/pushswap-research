@@ -1,11 +1,10 @@
-use std::collections::HashSet;
-
 pub fn process_and_rank(values: Vec<i32>) -> Result<Vec<usize>, String> {
     // Sort to rank
     // Unstable means that sort doesn't guarantee that equal values
     // stay in the same order. Since we have no duplicates, doesn't matter.
     // Under the hood, it uses Quicksort to sort.
-    let mut sorted = values.clone().sort_unstable();
+    let mut sorted = values.clone();
+    sorted.sort_unstable();
 
     // Check for duplicates
     // Since it's already sorted, we can just compare neighbors using windows
@@ -19,9 +18,9 @@ pub fn process_and_rank(values: Vec<i32>) -> Result<Vec<usize>, String> {
     let ranked_values: Vec<usize> = values
         .into_iter()
         .map(|val| {
-            // binary_search returns Ok(index). 
+            // binary_search returns Ok(index).
             // We use unwrap() because we already guarantee every number exists in the sorted.
-            sorted.binary_search(&val).unwrap() 
+            sorted.binary_search(&val).unwrap()
         })
         .collect();
 
