@@ -19,7 +19,7 @@ enum Operation {
 pub struct StackPair {
     a: VecDeque<usize>,
     b: VecDeque<usize>,
-    ops: Vec<Operation>,
+    logs: Vec<Operation>,
 }
 
 impl StackPair {
@@ -27,16 +27,14 @@ impl StackPair {
         Self {
             a: VecDeque::with_capacity(capacity),
             b: VecDeque::with_capacity(capacity),
-            ops: Vec::with_capacity(20 * capacity)
+            logs: Vec::with_capacity(20 * capacity),
         }
     }
 
     pub fn rotate_a(&mut self) {
-        let val = self.a.pop_front();
-        match val {
-            Some(actual_value) => self.a.push_back(actual_value),
-            None => (),
+        if let Some(x) = self.a.pop_front() {
+            self.a.push_back(x);
         }
-        self.ops.push(Operation::Ra);
+        self.logs.push(Operation::Ra);
     }
 }

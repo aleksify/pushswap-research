@@ -17,7 +17,7 @@ impl Config {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             values: Vec::with_capacity(capacity),
-            ..Default::default() 
+            ..Default::default()
         }
     }
 }
