@@ -37,4 +37,17 @@ impl StackPair {
         }
         self.logs.push(Operation::Ra);
     }
+
+    pub fn swap_a(&mut self) {
+        if let Some(first) = self.a.pop_front() {
+            if let Some(second) = self.a.pop_front() {
+                self.a.push_front(first);
+                self.a.push_front(second);
+            } else {
+                // Only had one, put it back
+                self.a.push_front(first);
+            }
+        }
+        self.logs.push(Operation::Sa);
+    }
 }
