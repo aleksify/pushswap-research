@@ -1,5 +1,7 @@
 mod stack_pair;
 
+use push_swap_rs::process_and_rank;
+use stack_pair::StackPair;
 use std::env;
 use std::process;
 
@@ -90,5 +92,11 @@ fn main() {
         process::exit(1);
     }
 
-    println!("Config successfully parsed: {:#?}", config);
+    let ranked = process_and_rank(config.values).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+    let stacks = StackPair::new(ranked);
+
+    println!("{:#?}", stacks);
 }

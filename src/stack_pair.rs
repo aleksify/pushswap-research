@@ -23,23 +23,18 @@ pub struct StackPair {
 }
 
 impl StackPair {
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub fn new(values: Vec<usize>) -> Self {
+        let len = values.len();
         Self {
-            a: VecDeque::with_capacity(capacity),
-            b: VecDeque::with_capacity(capacity),
-            logs: Vec::with_capacity(20 * capacity),
+            a: VecDeque::from(values),
+            b: VecDeque::with_capacity(len),
+            logs: Vec::with_capacity(20 * len),
         }
     }
 
     fn swap(stack: &mut VecDeque<usize>) {
-        if let Some(first) = stack.pop_front() {
-            if let Some(second) = stack.pop_front() {
-                stack.push_front(first);
-                stack.push_front(second);
-            } else {
-                // Only had one, put it back
-                stack.push_front(first);
-            }
+        if stack.len() >= 2 {
+            stack.swap(0, 1);
         }
     }
 
