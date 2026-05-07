@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum Operation {
@@ -13,6 +14,24 @@ pub enum Operation {
     Rra,
     Rrb,
     Rrr,
+}
+
+impl fmt::Display for Operation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Operation::Sa => write!(f, "sa"),
+            Operation::Sb => write!(f, "sb"),
+            Operation::Ss => write!(f, "ss"),
+            Operation::Pa => write!(f, "pa"),
+            Operation::Pb => write!(f, "pb"),
+            Operation::Ra => write!(f, "ra"),
+            Operation::Rb => write!(f, "rb"),
+            Operation::Rr => write!(f, "rr"),
+            Operation::Rra => write!(f, "rra"),
+            Operation::Rrb => write!(f, "rrb"),
+            Operation::Rrr => write!(f, "rrr"),
+        }
+    }
 }
 
 // Ignore operations will be ignored when optimization is ON
@@ -66,6 +85,18 @@ impl StackPair {
             Log::Ignore(op)
         };
         self.logs.push(entry);
+    }
+
+    pub fn a(&self) -> &VecDeque<usize> {
+        &self.a
+    }
+
+    pub fn b(&self) -> &VecDeque<usize> {
+        &self.b
+    }
+
+    pub fn logs(&self) -> &[Log] {
+        &self.logs
     }
 
     // We can't use || because it's lazy
