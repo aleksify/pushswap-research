@@ -1,7 +1,7 @@
-mod stack_pair;
+mod stacks;
 
 use push_swap_rs::process_and_rank;
-use stack_pair::StackPair;
+use stacks::StackPair;
 use std::env;
 use std::process;
 
