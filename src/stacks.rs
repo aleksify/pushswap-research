@@ -50,27 +50,15 @@ impl StackPair {
         let success = match op {
             Operation::Sa => StackPair::swap(&mut self.a),
             Operation::Sb => StackPair::swap(&mut self.b),
-            Operation::Ss => {
-                let a = StackPair::swap(&mut self.a);
-                let b = StackPair::swap(&mut self.b);
-                a || b
-            }
+            Operation::Ss => StackPair::both(&mut self.a, &mut self.b, StackPair::swap),
             Operation::Pa => StackPair::push(&mut self.a, &mut self.b),
             Operation::Pb => StackPair::push(&mut self.b, &mut self.a),
             Operation::Ra => StackPair::rotate(&mut self.a),
             Operation::Rb => StackPair::rotate(&mut self.b),
-            Operation::Rr => {
-                let a = StackPair::rotate(&mut self.a);
-                let b = StackPair::rotate(&mut self.b);
-                a || b
-            }
+            Operation::Rr => StackPair::both(&mut self.a, &mut self.b, StackPair::rotate),
             Operation::Rra => StackPair::rev_rotate(&mut self.a),
             Operation::Rrb => StackPair::rev_rotate(&mut self.b),
-            Operation::Rrr => {
-                let a = StackPair::rev_rotate(&mut self.a);
-                let b = StackPair::rev_rotate(&mut self.b);
-                a || b
-            }
+            Operation::Rrr => StackPair::both(&mut self.a, &mut self.b, StackPair::rev_rotate),
         };
         let entry = if success {
             Log::Execute(op)
@@ -78,6 +66,17 @@ impl StackPair {
             Log::Ignore(op)
         };
         self.logs.push(entry);
+    }
+
+    // We can't use || because it's lazy
+    // meaning, if f(a) was true,
+    // it won't execute f(b)
+    fn both(
+        a: &mut VecDeque<usize>,
+        b: &mut VecDeque<usize>,
+        f: fn(&mut VecDeque<usize>) -> bool,
+    ) -> bool {
+        f(a) | f(b)
     }
 
     fn swap(stack: &mut VecDeque<usize>) -> bool {
@@ -98,6 +97,9 @@ impl StackPair {
         }
     }
 
+    // We don't use built-in rotate_left/rotate_right
+    // because we need the return value
+    // to know if op was successful
     fn rotate(stack: &mut VecDeque<usize>) -> bool {
         if let Some(val) = stack.pop_front() {
             stack.push_back(val);
