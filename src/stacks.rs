@@ -1,7 +1,46 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-#[derive(Debug)]
+pub trait StackExt {
+    fn min_pos(&self) -> usize;
+    fn max_pos(&self) -> usize;
+    /// Position of smallest element > val, or min position if none exists.
+    fn min_above_pos(&self, val: usize) -> usize;
+    /// Position of largest element < val, or max position if none exists.
+    fn max_below_pos(&self, val: usize) -> usize;
+}
+
+impl StackExt for VecDeque<usize> {
+    fn min_pos(&self) -> usize {
+        self.iter().copied().enumerate().min_by_key(|(_, v)| *v).unwrap().0
+    }
+
+    fn max_pos(&self) -> usize {
+        self.iter().copied().enumerate().max_by_key(|(_, v)| *v).unwrap().0
+    }
+
+    fn min_above_pos(&self, val: usize) -> usize {
+        self.iter()
+            .copied()
+            .enumerate()
+            .filter(|(_, v)| *v > val)
+            .min_by_key(|(_, v)| *v)
+            .map(|(i, _)| i)
+            .unwrap_or_else(|| self.min_pos())
+    }
+
+    fn max_below_pos(&self, val: usize) -> usize {
+        self.iter()
+            .copied()
+            .enumerate()
+            .filter(|(_, v)| *v < val)
+            .max_by_key(|(_, v)| *v)
+            .map(|(i, _)| i)
+            .unwrap_or_else(|| self.max_pos())
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Operation {
     Sa,
     Sb,
@@ -36,13 +75,13 @@ impl fmt::Display for Operation {
 
 // Ignore operations will be ignored when optimization is ON
 // Later, optimizer will go over the Logs, and switch off useless ops
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Log {
     Execute(Operation),
     Ignore(Operation),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StackPair {
     a: VecDeque<usize>,
     b: VecDeque<usize>,
