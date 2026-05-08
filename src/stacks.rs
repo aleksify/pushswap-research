@@ -188,3 +188,38 @@ impl StackPair {
         }
     }
 }
+
+pub trait RotateExt {
+    /// Rotate A shortest direction to bring position to top.
+    fn rotate_a_to_top(&mut self, pos: usize);
+    /// Rotate B shortest direction to bring position to top.
+    fn rotate_b_to_top(&mut self, pos: usize);
+}
+
+impl RotateExt for StackPair {
+    fn rotate_a_to_top(&mut self, pos: usize) {
+        let n = self.a().len();
+        if pos <= n / 2 {
+            for _ in 0..pos {
+                self.execute(Operation::Ra);
+            }
+        } else {
+            for _ in pos..n {
+                self.execute(Operation::Rra);
+            }
+        }
+    }
+
+    fn rotate_b_to_top(&mut self, pos: usize) {
+        let n = self.b().len();
+        if pos <= n / 2 {
+            for _ in 0..pos {
+                self.execute(Operation::Rb);
+            }
+        } else {
+            for _ in pos..n {
+                self.execute(Operation::Rrb);
+            }
+        }
+    }
+}
