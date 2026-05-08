@@ -1,9 +1,9 @@
-mod stacks;
-
+use push_swap_rs::algo;
 use push_swap_rs::process_and_rank;
-use stacks::StackPair;
+use push_swap_rs::stacks::{Log, StackPair};
 use std::env;
 use std::process;
+use std::thread;
 
 #[derive(Debug, Default)]
 struct Config {
@@ -96,7 +96,37 @@ fn main() {
         eprintln!("Error: {e}");
         process::exit(1);
     });
+
     let stacks = StackPair::new(ranked);
 
-    println!("{:#?}", stacks);
+    let mut insert_stacks = stacks.clone();
+    let mut chunk_stacks = stacks.clone();
+    let mut turk_stacks = stacks;
+
+    let insert_handle = thread::spawn(move || {
+        algo::sort_insert(&mut insert_stacks);
+        insert_stacks
+    });
+    let chunk_handle = thread::spawn(move || {
+        algo::sort_chunk(&mut chunk_stacks);
+        chunk_stacks
+    });
+    let turk_handle = thread::spawn(move || {
+        algo::sort_turk(&mut turk_stacks);
+        turk_stacks
+    });
+
+    let insert_result = insert_handle.join().unwrap();
+    let chunk_result = chunk_handle.join().unwrap();
+    let turk_result = turk_handle.join().unwrap();
+
+    for log in turk_result.logs() {
+        if let Log::Execute(op) = log {
+            println!("{op}");
+        }
+    }
+
+    eprintln!("insert: {:#?}", insert_result.op_count());
+    eprintln!("chunk:  {:#?}", chunk_result.op_count());
+    eprintln!("turk:   {:#?}", turk_result.op_count());
 }

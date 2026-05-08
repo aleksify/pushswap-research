@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::fmt;
+use std::str::FromStr;
 
 pub trait StackExt {
     fn min_pos(&self) -> usize;
@@ -12,11 +13,21 @@ pub trait StackExt {
 
 impl StackExt for VecDeque<usize> {
     fn min_pos(&self) -> usize {
-        self.iter().copied().enumerate().min_by_key(|(_, v)| *v).unwrap().0
+        self.iter()
+            .copied()
+            .enumerate()
+            .min_by_key(|(_, v)| *v)
+            .unwrap()
+            .0
     }
 
     fn max_pos(&self) -> usize {
-        self.iter().copied().enumerate().max_by_key(|(_, v)| *v).unwrap().0
+        self.iter()
+            .copied()
+            .enumerate()
+            .max_by_key(|(_, v)| *v)
+            .unwrap()
+            .0
     }
 
     fn min_above_pos(&self, val: usize) -> usize {
@@ -69,6 +80,27 @@ impl fmt::Display for Operation {
             Operation::Rra => write!(f, "rra"),
             Operation::Rrb => write!(f, "rrb"),
             Operation::Rrr => write!(f, "rrr"),
+        }
+    }
+}
+
+impl FromStr for Operation {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "sa" => Ok(Operation::Sa),
+            "sb" => Ok(Operation::Sb),
+            "ss" => Ok(Operation::Ss),
+            "pa" => Ok(Operation::Pa),
+            "pb" => Ok(Operation::Pb),
+            "ra" => Ok(Operation::Ra),
+            "rb" => Ok(Operation::Rb),
+            "rr" => Ok(Operation::Rr),
+            "rra" => Ok(Operation::Rra),
+            "rrb" => Ok(Operation::Rrb),
+            "rrr" => Ok(Operation::Rrr),
+            _ => Err(format!("Unknown operation: '{s}'")),
         }
     }
 }
@@ -136,6 +168,17 @@ impl StackPair {
 
     pub fn logs(&self) -> &[Log] {
         &self.logs
+    }
+
+    pub fn op_count(&self) -> usize {
+        self.logs.len()
+    }
+
+    pub fn op_count_opt(&self) -> usize {
+        self.logs
+            .iter()
+            .filter(|l| matches!(l, Log::Execute(_)))
+            .count()
     }
 
     // We can't use || because it's lazy

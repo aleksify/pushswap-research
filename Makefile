@@ -4,15 +4,18 @@ PROJECT_NAME = push_swap_rs
 # Default target
 .DEFAULT_GOAL := help
 
-.PHONY: all build run test fmt lint clean release help
+.PHONY: all build run run-checker test fmt lint clean release help
 
 all: fmt lint test build ## Run formatting, linting, tests, and build the project
 
 build: ## Build the project in debug mode
 	$(CARGO) build
 
-run: ## Run the project in debug mode
-	$(CARGO) run
+run: ## Run push_swap (pass ARGS, e.g. make run ARGS="3 2 1")
+	$(CARGO) run --bin $(PROJECT_NAME) -- $(ARGS)
+
+run-checker: ## Run checker (pass ARGS, e.g. make checker ARGS="3 2 1")
+	$(CARGO) run --bin checker -- $(ARGS)
 
 test: ## Run the test suite
 	$(CARGO) test

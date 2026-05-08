@@ -1,3 +1,6 @@
+pub mod algo;
+pub mod stacks;
+
 pub fn process_and_rank(values: Vec<i32>) -> Result<Vec<usize>, String> {
     // Sort to rank
     // Unstable means that sort doesn't guarantee that equal values
