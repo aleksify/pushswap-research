@@ -35,39 +35,24 @@ fn move_cost(pa: usize, sa: usize, pb: usize, sb: usize) -> usize {
 
 /// Execute combined rotations, using rr/rrr when directions align.
 fn apply_rots(stacks: &mut StackPair, pos_a: usize, pos_b: usize) {
-    let mut ra = pos_a as isize;
-    let mut rb = pos_b as isize;
-    if ra > stacks.a().len() as isize / 2 {
-        ra -= stacks.a().len() as isize;
+    let (mut ca, fwd_a) = rot_cost(pos_a, stacks.a().len());
+    let (mut cb, fwd_b) = rot_cost(pos_b, stacks.b().len());
+    if fwd_a == fwd_b {
+        let shared = ca.min(cb);
+        let op = if fwd_a { Operation::Rr } else { Operation::Rrr };
+        for _ in 0..shared {
+            stacks.execute(op);
+        }
+        ca -= shared;
+        cb -= shared;
     }
-    if rb > stacks.b().len() as isize / 2 {
-        rb -= stacks.b().len() as isize;
+    let op_a = if fwd_a { Operation::Ra } else { Operation::Rra };
+    let op_b = if fwd_b { Operation::Rb } else { Operation::Rrb };
+    for _ in 0..ca {
+        stacks.execute(op_a);
     }
-    while ra > 0 && rb > 0 {
-        stacks.execute(Operation::Rr);
-        ra -= 1;
-        rb -= 1;
-    }
-    while ra < 0 && rb < 0 {
-        stacks.execute(Operation::Rrr);
-        ra += 1;
-        rb += 1;
-    }
-    while ra > 0 {
-        stacks.execute(Operation::Ra);
-        ra -= 1;
-    }
-    while ra < 0 {
-        stacks.execute(Operation::Rra);
-        ra += 1;
-    }
-    while rb > 0 {
-        stacks.execute(Operation::Rb);
-        rb -= 1;
-    }
-    while rb < 0 {
-        stacks.execute(Operation::Rrb);
-        rb += 1;
+    for _ in 0..cb {
+        stacks.execute(op_b);
     }
 }
 

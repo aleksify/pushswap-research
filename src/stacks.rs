@@ -51,7 +51,7 @@ impl StackExt for VecDeque<usize> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Operation {
     Sa,
     Sb,
