@@ -56,6 +56,19 @@ fn apply_rots(stacks: &mut StackPair, pos_a: usize, pos_b: usize) {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::algo::test_utils::assert_sorts_random;
+
+    // Slower than chunk/insert tests: push_cheapest is O(n²) per call (scans all of A,
+    // each calling max_below_pos which scans all of B), called ~n times = O(n³) total.
+    #[test]
+    fn random_inputs() {
+        assert_sorts_random(&[100, 500], 10, sort_turk);
+    }
+}
+
 /// Find element in A with cheapest move cost to B, rotate both, push.
 fn push_cheapest(stacks: &mut StackPair) {
     let sa = stacks.a().len();

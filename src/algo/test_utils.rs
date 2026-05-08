@@ -37,3 +37,20 @@ pub fn assert_sorts_all(min_n: usize, max_n: usize, sort_fn: fn(&mut StackPair))
         }
     }
 }
+
+/// Test sort_fn on random shuffles of 0..n for each size, `iterations` times per size.
+/// Uses seeded RNG for deterministic, reproducible results.
+pub fn assert_sorts_random(sizes: &[usize], iterations: usize, sort_fn: fn(&mut StackPair)) {
+    use rand::rngs::StdRng;
+    use rand::seq::SliceRandom;
+    use rand::SeedableRng;
+
+    for &n in sizes {
+        for seed in 0..iterations {
+            let mut rng = StdRng::seed_from_u64(seed as u64);
+            let mut vals: Vec<usize> = (0..n).collect();
+            vals.shuffle(&mut rng);
+            assert_sorts(&vals, sort_fn);
+        }
+    }
+}
