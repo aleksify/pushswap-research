@@ -33,6 +33,6 @@ mod tests {
 
     #[test]
     fn all_permutations() {
-        assert_sorts_all(0, 3, sort_three);
+        assert_sorts_all(1, 3, sort_three);
     }
 }

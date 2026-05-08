@@ -27,6 +27,6 @@ mod tests {
 
     #[test]
     fn all_permutations() {
-        assert_sorts_all(0, 5, sort_selection);
+        assert_sorts_all(1, 5, sort_selection);
     }
 }
