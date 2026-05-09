@@ -6,17 +6,6 @@ pub fn sort_chunk(stacks: &mut StackPair) {
     push_back_to_a(stacks);
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::algo::test_utils::assert_sorts_random;
-
-    #[test]
-    fn random_inputs() {
-        assert_sorts_random(&[100, 500], 10, sort_chunk);
-    }
-}
-
 /// Push A to B in chunks sized by sqrt(n), smaller values rotate to bottom.
 fn push_chunks_to_b(stacks: &mut StackPair) {
     let chunk = stacks.a().len().isqrt() * 14 / 10;
@@ -42,5 +31,16 @@ fn push_back_to_a(stacks: &mut StackPair) {
         let max = stacks.b().max_pos();
         stacks.rotate_b_to_top(max);
         stacks.execute(Operation::Pa);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::algo::test_utils::assert_sorts_random;
+
+    #[test]
+    fn random_inputs() {
+        assert_sorts_random(&[100, 500], 10, sort_chunk);
     }
 }

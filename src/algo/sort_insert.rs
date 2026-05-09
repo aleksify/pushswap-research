@@ -13,17 +13,6 @@ pub fn sort_insert(stacks: &mut StackPair) {
     stacks.rotate_a_to_top(min);
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::algo::test_utils::assert_sorts_random;
-
-    #[test]
-    fn random_inputs() {
-        assert_sorts_random(&[100, 500], 10, sort_insert);
-    }
-}
-
 /// Push elements that break ascending order to B, keep sorted tail in A.
 fn push_unsorted(stacks: &mut StackPair) {
     let n = stacks.a().len();
@@ -35,5 +24,16 @@ fn push_unsorted(stacks: &mut StackPair) {
         } else {
             stacks.execute(Operation::Pb);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::algo::test_utils::assert_sorts_random;
+
+    #[test]
+    fn random_inputs() {
+        assert_sorts_random(&[100, 500], 10, sort_insert);
     }
 }
