@@ -8,8 +8,10 @@ PROJECT_NAME = push_swap_rs
 
 all: fmt lint test build ## Run formatting, linting, tests, and build the project
 
-build: ## Build the project in debug mode
+build: ## Build the project in debug mode and copy to root
 	$(CARGO) build
+	cp target/debug/push_swap_rs ./push_swap
+	cp target/debug/checker .
 
 run: ## Run push_swap (pass ARGS, e.g. make run ARGS="3 2 1")
 	$(CARGO) run --bin $(PROJECT_NAME) -- $(ARGS)
@@ -28,9 +30,12 @@ lint: ## Run clippy to lint the code
 
 clean: ## Remove the target directory and build artifacts
 	$(CARGO) clean
+	rm -f push_swap checker
 
-release: ## Build the project in release mode (optimized)
+release: ## Build the project in release mode (optimized)  and copy to root
 	$(CARGO) build --release
+	cp target/release/push_swap_rs ./push_swap
+	cp target/release/checker .
 
 help: ## Print this help message
 	@echo "Usage: make [target]"
