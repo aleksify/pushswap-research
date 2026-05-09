@@ -14,38 +14,34 @@ pub trait StackExt {
 impl StackExt for VecDeque<usize> {
     fn min_pos(&self) -> usize {
         self.iter()
-            .copied()
             .enumerate()
-            .min_by_key(|(_, v)| *v)
+            .min_by_key(|&(_, v)| v)
             .unwrap()
             .0
     }
 
     fn max_pos(&self) -> usize {
         self.iter()
-            .copied()
             .enumerate()
-            .max_by_key(|(_, v)| *v)
+            .max_by_key(|&(_, v)| v)
             .unwrap()
             .0
     }
 
     fn min_above_pos(&self, val: usize) -> usize {
         self.iter()
-            .copied()
             .enumerate()
-            .filter(|(_, v)| *v > val)
-            .min_by_key(|(_, v)| *v)
+            .filter(|&(_, v)| *v > val)
+            .min_by_key(|&(_, v)| v)
             .map(|(i, _)| i)
             .unwrap_or_else(|| self.min_pos())
     }
 
     fn max_below_pos(&self, val: usize) -> usize {
         self.iter()
-            .copied()
             .enumerate()
-            .filter(|(_, v)| *v < val)
-            .max_by_key(|(_, v)| *v)
+            .filter(|&(_, v)| *v < val)
+            .max_by_key(|&(_, v)| v)
             .map(|(i, _)| i)
             .unwrap_or_else(|| self.max_pos())
     }

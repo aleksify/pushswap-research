@@ -1,6 +1,22 @@
 pub mod algo;
 pub mod stacks;
 
+/// Disorder score in range 0.0..=1.0.
+/// 0.0 = sorted, 1.0 = fully reversed.
+pub fn disorder(slice: &[usize]) -> f64 {
+    let n = slice.len();
+    if n <= 1 {
+        return 0.0;
+    }
+    let total_pairs = (n * (n - 1) / 2) as f64;
+    let inversions: usize = slice
+        .iter()
+        .enumerate()
+        .map(|(i, &a)| slice[i + 1..].iter().filter(|&&b| a > b).count())
+        .sum();
+    inversions as f64 / total_pairs
+}
+
 pub fn process_and_rank(values: Vec<i32>) -> Result<Vec<usize>, String> {
     // Sort to rank
     // Unstable means that sort doesn't guarantee that equal values
