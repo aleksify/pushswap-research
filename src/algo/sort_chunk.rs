@@ -10,8 +10,7 @@ pub fn sort_chunk(stacks: &mut StackPair) {
 fn push_chunks_to_b(stacks: &mut StackPair) {
     let chunk = stacks.a().len().isqrt() * 14 / 10;
     let mut pushed = 0;
-    while !stacks.a().is_empty() {
-        let val = stacks.a()[0];
+    while let Some(&val) = stacks.a().front() {
         if val <= pushed {
             stacks.execute(Operation::Pb);
             stacks.execute(Operation::Rb);
