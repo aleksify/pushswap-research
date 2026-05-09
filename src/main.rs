@@ -1,5 +1,5 @@
 use push_swap_rs::algo::Algorithm;
-use push_swap_rs::{bench, disorder, process_and_rank};
+use push_swap_rs::{bench, disorder, parse_values, process_and_rank};
 use push_swap_rs::stacks::{Log, StackPair};
 use std::env;
 use std::process;
@@ -16,36 +16,27 @@ enum AlgoFlag {
 #[derive(Debug)]
 struct Config {
     algo: AlgoFlag,
-    algo_set: bool,
     bench: bool,
     values: Vec<i32>,
 }
 
-impl Config {
-    fn with_capacity(capacity: usize) -> Self {
-        Self {
-            algo: AlgoFlag::default(),
-            algo_set: false,
-            bench: false,
-            values: Vec::with_capacity(capacity),
-        }
-    }
-}
-
 fn parse_args() -> Config {
-    let mut config = Config::with_capacity(500);
+    let mut algo = AlgoFlag::default();
+    let mut algo_set = false;
+    let mut bench = false;
+    let mut value_args = Vec::new();
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
             "--simple" | "--medium" | "--complex" | "--adaptive" => {
-                if config.algo_set {
+                if algo_set {
                     eprintln!(
                         "Error: simple, medium, complex, or adaptive cannot be used together"
                     );
                     process::exit(1);
                 }
-                config.algo_set = true;
-                config.algo = match arg.as_str() {
+                algo_set = true;
+                algo = match arg.as_str() {
                     "--simple" => AlgoFlag::Simple,
                     "--medium" => AlgoFlag::Medium,
                     "--complex" => AlgoFlag::Complex,
@@ -53,35 +44,29 @@ fn parse_args() -> Config {
                     _ => unreachable!(),
                 };
             }
-            "--bench" => config.bench = true,
+            "--bench" => bench = true,
             other => {
                 if other.starts_with("--") {
                     eprintln!("Error: Unknown flag '{}'", other);
                     process::exit(1);
                 }
-                for num_str in other.split_whitespace() {
-                    match num_str.parse::<i32>() {
-                        Ok(num) => config.values.push(num),
-                        Err(_) => {
-                            eprintln!("Error: Expected an integer, found '{}'", num_str);
-                            process::exit(1);
-                        }
-                    }
-                }
+                value_args.push(arg);
             }
         }
     }
-    if config.values.is_empty() {
-        eprintln!("Error: No values provided");
+
+    let values = parse_values(&value_args).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
         process::exit(1);
-    }
-    config
+    });
+
+    Config { algo, bench, values }
 }
 
 fn main() {
     let config = parse_args();
 
-    let ranked = process_and_rank(config.values).unwrap_or_else(|e| {
+    let ranked = process_and_rank(&config.values).unwrap_or_else(|e| {
         eprintln!("Error: {e}");
         process::exit(1);
     });

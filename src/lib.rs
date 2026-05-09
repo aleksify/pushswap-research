@@ -58,12 +58,29 @@ pub fn bench(stacks: &stacks::StackPair, disorder: f64, strategy: &str) {
     eprintln!("[bench] ra: {ra}  rb: {rb}  rr: {rr}  rra: {rra}  rrb: {rrb}  rrr: {rrr}");
 }
 
-pub fn process_and_rank(values: Vec<i32>) -> Result<Vec<usize>, String> {
+pub fn parse_values(args: &[String]) -> Result<Vec<i32>, String> {
+    let mut values = Vec::new();
+    for arg in args {
+        for num_str in arg.split_whitespace() {
+            values.push(
+                num_str
+                    .parse::<i32>()
+                    .map_err(|_| format!("Expected an integer, found '{num_str}'"))?,
+            );
+        }
+    }
+    if values.is_empty() {
+        return Err("No values provided".to_string());
+    }
+    Ok(values)
+}
+
+pub fn process_and_rank(values: &[i32]) -> Result<Vec<usize>, String> {
     // Sort to rank
     // Unstable means that sort doesn't guarantee that equal values
     // stay in the same order. Since we have no duplicates, doesn't matter.
     // Under the hood, it uses Quicksort to sort.
-    let mut sorted = values.clone();
+    let mut sorted = values.to_vec();
     sorted.sort_unstable();
 
     // Check for duplicates
@@ -74,13 +91,12 @@ pub fn process_and_rank(values: Vec<i32>) -> Result<Vec<usize>, String> {
         }
     }
 
-    // into_iter consumes the `values` array
     let ranked_values: Vec<usize> = values
-        .into_iter()
+        .iter()
         .map(|val| {
             // binary_search returns Ok(index).
             // We use unwrap() because we already guarantee every number exists in the sorted.
-            sorted.binary_search(&val).unwrap()
+            sorted.binary_search(val).unwrap()
         })
         .collect();
 

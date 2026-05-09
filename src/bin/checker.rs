@@ -1,29 +1,17 @@
-use push_swap_rs::process_and_rank;
+use push_swap_rs::{parse_values, process_and_rank};
 use push_swap_rs::stacks::{Operation, StackPair};
 use std::io::{self, BufRead};
 use std::{env, process};
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    if args.is_empty() {
-        eprintln!("Error: No values provided");
+
+    let values = parse_values(&args).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
         process::exit(1);
-    }
+    });
 
-    let mut values = Vec::new();
-    for arg in &args {
-        for num_str in arg.split_whitespace() {
-            match num_str.parse::<i32>() {
-                Ok(num) => values.push(num),
-                Err(_) => {
-                    eprintln!("Error: Expected an integer, found '{num_str}'");
-                    process::exit(1);
-                }
-            }
-        }
-    }
-
-    let ranked = process_and_rank(values).unwrap_or_else(|e| {
+    let ranked = process_and_rank(&values).unwrap_or_else(|e| {
         eprintln!("Error: {e}");
         process::exit(1);
     });
