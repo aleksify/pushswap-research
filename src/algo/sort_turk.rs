@@ -6,6 +6,10 @@ use super::sort_three::sort_three;
 pub fn sort_turk(stacks: &mut StackPair) {
     stacks.execute(Operation::Pb);
     stacks.execute(Operation::Pb);
+    if stacks.a().len() <= 3 {
+        sort_three(stacks);
+        return;
+    }
     for _ in 0..stacks.a().len() - 3 {
         push_cheapest(stacks);
     }
