@@ -32,17 +32,31 @@ pub enum Algorithm {
 
 impl fmt::Display for Algorithm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let name = match self {
-            Algorithm::Selection => sort_selection::name(),
-            Algorithm::Insertion => sort_insertion::name(),
-            Algorithm::KSort => sort_k_chunk::name(),
-            Algorithm::Turk => sort_turk::name(),
-        };
-        write!(f, "{name}")
+        write!(f, "{}", self.name())
     }
 }
 
 impl Algorithm {
+    pub const ALL: &[Algorithm] = &[
+        Algorithm::Selection,
+        Algorithm::Insertion,
+        Algorithm::KSort,
+        Algorithm::Turk,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Algorithm::Selection => sort_selection::name(),
+            Algorithm::Insertion => sort_insertion::name(),
+            Algorithm::KSort => sort_k_chunk::name(),
+            Algorithm::Turk => sort_turk::name(),
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Algorithm> {
+        Self::ALL.iter().find(|a| a.name() == name).copied()
+    }
+
     pub fn sort(self) -> fn(&mut StackPair) {
         match self {
             Algorithm::Selection => sort_selection,

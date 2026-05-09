@@ -4,54 +4,39 @@ use push_swap_rs::stacks::{Log, StackPair};
 use std::env;
 use std::process;
 
-#[derive(Debug, Default, Clone, Copy)]
-enum AlgoFlag {
-    Simple,
-    Medium,
-    Complex,
-    #[default]
-    Adaptive,
-}
-
 #[derive(Debug)]
 struct Config {
-    algo: AlgoFlag,
+    algo: Option<Algorithm>,
     bench: bool,
     values: Vec<i32>,
 }
 
 fn parse_args() -> Config {
-    let mut algo = AlgoFlag::default();
-    let mut algo_set = false;
+    let mut algo: Option<Algorithm> = None;
     let mut bench = false;
     let mut value_args = Vec::new();
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
-            "--simple" | "--medium" | "--complex" | "--adaptive" => {
-                if algo_set {
-                    eprintln!(
-                        "Error: simple, medium, complex, or adaptive cannot be used together"
-                    );
-                    process::exit(1);
-                }
-                algo_set = true;
-                algo = match arg.as_str() {
-                    "--simple" => AlgoFlag::Simple,
-                    "--medium" => AlgoFlag::Medium,
-                    "--complex" => AlgoFlag::Complex,
-                    "--adaptive" => AlgoFlag::Adaptive,
-                    _ => unreachable!(),
-                };
-            }
             "--bench" => bench = true,
-            other => {
-                if other.starts_with("--") {
-                    eprintln!("Error: Unknown flag '{}'", other);
-                    process::exit(1);
+            other if other.starts_with("--") => {
+                let flag = &other[2..];
+                match Algorithm::from_name(flag) {
+                    Some(a) => {
+                        if algo.is_some() {
+                            eprintln!("Error: only one algorithm flag allowed");
+                            process::exit(1);
+                        }
+                        algo = Some(a);
+                    }
+                    None => {
+                        let names: Vec<_> = Algorithm::ALL.iter().map(|a| a.name()).collect();
+                        eprintln!("Error: Unknown flag '{other}'. Available: {}, bench", names.join(", "));
+                        process::exit(1);
+                    }
                 }
-                value_args.push(arg);
             }
+            _ => value_args.push(arg),
         }
     }
 
@@ -76,24 +61,17 @@ fn main() {
 
     let d = disorder(&ranked);
 
-    let algo = if n <= 5 {
-        Algorithm::Selection
-    } else {
-        match config.algo {
-            AlgoFlag::Simple => Algorithm::Insertion,
-            AlgoFlag::Medium => Algorithm::KSort,
-            AlgoFlag::Complex => Algorithm::Turk,
-            AlgoFlag::Adaptive => {
-                if d < 0.2 {
-                    Algorithm::Insertion
-                } else if d < 0.5 {
-                    Algorithm::KSort
-                } else {
-                    Algorithm::Turk
-                }
-            }
+    let algo = config.algo.unwrap_or({
+        if n <= 5 {
+            Algorithm::Selection
+        } else if d < 0.2 {
+            Algorithm::Insertion
+        } else if d < 0.5 {
+            Algorithm::KSort
+        } else {
+            Algorithm::Turk
         }
-    };
+    });
 
     algo.sort()(&mut stacks);
 
