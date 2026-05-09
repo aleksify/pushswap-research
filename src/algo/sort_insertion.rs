@@ -1,7 +1,9 @@
 use crate::stacks::{Operation, RotateExt, StackExt, StackPair};
 
+sort_name!();
+
 /// Insertion sort: push unsorted to B, insert each back at correct position.
-pub fn sort_insert(stacks: &mut StackPair) {
+pub fn sort_insertion(stacks: &mut StackPair) {
     push_unsorted(stacks);
     while !stacks.b().is_empty() {
         let val = stacks.b()[0];
@@ -34,6 +36,6 @@ mod tests {
 
     #[test]
     fn random_inputs() {
-        assert_sorts_random(&[100, 500], 10, sort_insert);
+        assert_sorts_random(&[100, 500], 10, sort_insertion);
     }
 }

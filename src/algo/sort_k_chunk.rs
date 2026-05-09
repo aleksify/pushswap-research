@@ -1,7 +1,9 @@
 use crate::stacks::{Operation, RotateExt, StackExt, StackPair};
 
-/// Chunk sort: split into sqrt-sized ranges, push to B, pop max back.
-pub fn sort_chunk(stacks: &mut StackPair) {
+sort_name!();
+
+/// K-chunk sort: split into sqrt-sized ranges, push to B, pop max back.
+pub fn sort_k_chunk(stacks: &mut StackPair) {
     push_chunks_to_b(stacks);
     push_back_to_a(stacks);
 }
@@ -40,6 +42,6 @@ mod tests {
 
     #[test]
     fn random_inputs() {
-        assert_sorts_random(&[100, 500], 10, sort_chunk);
+        assert_sorts_random(&[100, 500], 10, sort_k_chunk);
     }
 }

@@ -2,6 +2,8 @@ use crate::stacks::{Operation, RotateExt, StackExt, StackPair};
 
 use super::sort_three::sort_three;
 
+sort_name!();
+
 /// Selection sort: push smallest to B one by one, sort_three remainder, push back.
 pub fn sort_selection(stacks: &mut StackPair) {
     if stacks.a().len() <= 3 {

@@ -2,6 +2,8 @@ use crate::stacks::{Operation, RotateExt, StackExt, StackPair};
 
 use super::sort_three::sort_three;
 
+sort_name!();
+
 /// Turk sort: greedily push cheapest to B, sort_three remainder, insert back.
 pub fn sort_turk(stacks: &mut StackPair) {
     stacks.execute(Operation::Pb);
