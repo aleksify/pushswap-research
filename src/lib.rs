@@ -17,6 +17,47 @@ pub fn disorder(slice: &[usize]) -> f64 {
     inversions as f64 / total_pairs
 }
 
+pub fn bench(stacks: &stacks::StackPair, disorder: f64, strategy: &str) {
+    use stacks::{Log, Operation};
+
+    let mut sa = 0u32;
+    let mut sb = 0u32;
+    let mut ss = 0u32;
+    let mut pa = 0u32;
+    let mut pb = 0u32;
+    let mut ra = 0u32;
+    let mut rb = 0u32;
+    let mut rr = 0u32;
+    let mut rra = 0u32;
+    let mut rrb = 0u32;
+    let mut rrr = 0u32;
+
+    for log in stacks.logs() {
+        if let Log::Execute(op) = log {
+            match op {
+                Operation::Sa => sa += 1,
+                Operation::Sb => sb += 1,
+                Operation::Ss => ss += 1,
+                Operation::Pa => pa += 1,
+                Operation::Pb => pb += 1,
+                Operation::Ra => ra += 1,
+                Operation::Rb => rb += 1,
+                Operation::Rr => rr += 1,
+                Operation::Rra => rra += 1,
+                Operation::Rrb => rrb += 1,
+                Operation::Rrr => rrr += 1,
+            }
+        }
+    }
+    let total = sa + sb + ss + pa + pb + ra + rb + rr + rra + rrb + rrr;
+
+    eprintln!("[bench] disorder:   {:.2}%", disorder * 100.0);
+    eprintln!("[bench] strategy:   {strategy}");
+    eprintln!("[bench] total_ops:  {total}");
+    eprintln!("[bench] sa: {sa}  sb: {sb}  ss: {ss}  pa: {pa}  pb: {pb}");
+    eprintln!("[bench] ra: {ra}  rb: {rb}  rr: {rr}  rra: {rra}  rrb: {rrb}  rrr: {rrr}");
+}
+
 pub fn process_and_rank(values: Vec<i32>) -> Result<Vec<usize>, String> {
     // Sort to rank
     // Unstable means that sort doesn't guarantee that equal values

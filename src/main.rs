@@ -1,5 +1,5 @@
-use push_swap_rs::algo;
-use push_swap_rs::{disorder, process_and_rank};
+use push_swap_rs::algo::Algorithm;
+use push_swap_rs::{bench, disorder, process_and_rank};
 use push_swap_rs::stacks::{Log, StackPair};
 use std::env;
 use std::process;
@@ -89,31 +89,36 @@ fn main() {
     let n = ranked.len();
     let mut stacks = StackPair::new(ranked.clone());
 
-    let sort_fn: fn(&mut StackPair) = if n <= 5 {
-        algo::sort_selection
+    let d = disorder(&ranked);
+
+    let algo = if n <= 5 {
+        Algorithm::Selection
     } else {
         match config.algo {
-            AlgoFlag::Simple => algo::sort_insert,
-            AlgoFlag::Medium => algo::sort_chunk,
-            AlgoFlag::Complex => algo::sort_turk,
+            AlgoFlag::Simple => Algorithm::Insertion,
+            AlgoFlag::Medium => Algorithm::KSort,
+            AlgoFlag::Complex => Algorithm::Turk,
             AlgoFlag::Adaptive => {
-                let d = disorder(&ranked);
                 if d < 0.2 {
-                    algo::sort_insert
+                    Algorithm::Insertion
                 } else if d < 0.5 {
-                    algo::sort_chunk
+                    Algorithm::KSort
                 } else {
-                    algo::sort_turk
+                    Algorithm::Turk
                 }
             }
         }
     };
 
-    sort_fn(&mut stacks);
+    algo.sort()(&mut stacks);
 
     for log in stacks.logs() {
         if let Log::Execute(op) = log {
             println!("{op}");
         }
+    }
+
+    if config.bench {
+        bench(&stacks, d, &algo.to_string());
     }
 }
