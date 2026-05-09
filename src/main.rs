@@ -16,58 +16,39 @@ struct Config {
 }
 
 impl Config {
-    pub fn with_capacity(capacity: usize) -> Self {
+    fn with_capacity(capacity: usize) -> Self {
         Self {
             values: Vec::with_capacity(capacity),
             ..Default::default()
         }
     }
+
+    fn algo_flag_set(&self) -> bool {
+        self.simple || self.medium || self.complex || self.adaptive
+    }
 }
 
-fn main() {
+fn parse_args() -> Config {
     let mut config = Config::with_capacity(500);
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
-            "--simple" => {
-                if config.medium || config.complex || config.adaptive {
+            "--simple" | "--medium" | "--complex" | "--adaptive" => {
+                if config.algo_flag_set() {
                     eprintln!(
                         "Error: simple, medium, complex, or adaptive cannot be used together"
                     );
                     process::exit(1);
                 }
-                config.simple = true;
-            }
-            "--medium" => {
-                if config.simple || config.complex || config.adaptive {
-                    eprintln!(
-                        "Error: simple, medium, complex, or adaptive cannot be used together"
-                    );
-                    process::exit(1);
+                match arg.as_str() {
+                    "--simple" => config.simple = true,
+                    "--medium" => config.medium = true,
+                    "--complex" => config.complex = true,
+                    "--adaptive" => config.adaptive = true,
+                    _ => unreachable!(),
                 }
-                config.medium = true;
             }
-            "--complex" => {
-                if config.simple || config.medium || config.adaptive {
-                    eprintln!(
-                        "Error: simple, medium, complex, or adaptive cannot be used together"
-                    );
-                    process::exit(1);
-                }
-                config.complex = true;
-            }
-            "--adaptive" => {
-                if config.simple || config.medium || config.complex {
-                    eprintln!(
-                        "Error: simple, medium, complex, or adaptive cannot be used together"
-                    );
-                    process::exit(1);
-                }
-                config.adaptive = true;
-            }
-            "--bench" => {
-                config.bench = true;
-            }
+            "--bench" => config.bench = true,
             other => {
                 if other.starts_with("--") {
                     eprintln!("Error: Unknown flag '{}'", other);
@@ -91,6 +72,11 @@ fn main() {
         eprintln!("Error: No values provided");
         process::exit(1);
     }
+    config
+}
+
+fn main() {
+    let config = parse_args();
 
     let ranked = process_and_rank(config.values).unwrap_or_else(|e| {
         eprintln!("Error: {e}");
