@@ -210,12 +210,9 @@ impl StackPair {
         }
     }
 
-    // We don't use built-in rotate_left/rotate_right
-    // because we need the return value
-    // to know if op was successful
     fn rotate(stack: &mut VecDeque<usize>) -> bool {
-        if let Some(val) = stack.pop_front() {
-            stack.push_back(val);
+        if stack.len() >= 2 {
+            stack.rotate_left(1);
             true
         } else {
             false
@@ -223,8 +220,8 @@ impl StackPair {
     }
 
     fn rev_rotate(stack: &mut VecDeque<usize>) -> bool {
-        if let Some(val) = stack.pop_back() {
-            stack.push_front(val);
+        if stack.len() >= 2 {
+            stack.rotate_right(1);
             true
         } else {
             false
