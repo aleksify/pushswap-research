@@ -73,6 +73,7 @@ fn main() {
 
     if let Some(algo) = config.algo {
         algo.sort()(&mut stacks);
+        let pre_opt = stacks.total_ops_opt();
         if !config.no_opt {
             stacks.set_logs(optimizer::optimize(stacks.logs().to_vec()));
         }
@@ -84,7 +85,7 @@ fn main() {
         }
 
         if config.bench {
-            bench(&stacks, disorder(&ranked), &algo.to_string());
+            bench(&stacks, disorder(&ranked), &algo.to_string(), pre_opt);
         }
     } else {
         let no_opt = config.no_opt;
@@ -94,18 +95,19 @@ fn main() {
                 let mut s = stacks.clone();
                 thread::spawn(move || {
                     algo.sort()(&mut s);
+                    let pre_opt = s.total_ops_opt();
                     if !no_opt {
                         s.set_logs(optimizer::optimize(s.logs().to_vec()));
                     }
-                    (s, algo)
+                    (s, algo, pre_opt)
                 })
             })
             .collect();
 
         let mut results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 
-        results.sort_by_key(|(s, _)| s.total_ops_opt());
-        let (best_stacks, _) = &results[0];
+        results.sort_by_key(|(s, _, _)| s.total_ops_opt());
+        let (best_stacks, _, _) = &results[0];
 
         for log in best_stacks.logs() {
             if let Log::Execute(op) = log {
