@@ -1,6 +1,6 @@
 use push_swap::algo::Algorithm;
 use push_swap::optimizer;
-use push_swap::stacks::{Log, StackPair};
+use push_swap::stacks::StackPair;
 use push_swap::{bench, bench_all, disorder, parse_values, process_and_rank};
 use std::env;
 use std::process;
@@ -73,15 +73,13 @@ fn main() {
 
     if let Some(algo) = config.algo {
         algo.sort()(&mut stacks);
-        let pre_opt = stacks.total_ops_opt();
+        let pre_opt = stacks.total_ops();
         if !config.no_opt {
             stacks.set_logs(optimizer::optimize(stacks.logs().to_vec()));
         }
 
-        for log in stacks.logs() {
-            if let Log::Execute(op) = log {
-                println!("{op}");
-            }
+        for op in stacks.logs() {
+            println!("{op}");
         }
 
         if config.bench {
@@ -95,7 +93,7 @@ fn main() {
                 let mut s = stacks.clone();
                 thread::spawn(move || {
                     algo.sort()(&mut s);
-                    let pre_opt = s.total_ops_opt();
+                    let pre_opt = s.total_ops();
                     if !no_opt {
                         s.set_logs(optimizer::optimize(s.logs().to_vec()));
                     }
@@ -106,13 +104,11 @@ fn main() {
 
         let mut results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 
-        results.sort_by_key(|(s, _, _)| s.total_ops_opt());
+        results.sort_by_key(|(s, _, _)| s.total_ops());
         let (best_stacks, _, _) = &results[0];
 
-        for log in best_stacks.logs() {
-            if let Log::Execute(op) = log {
-                println!("{op}");
-            }
+        for op in best_stacks.logs() {
+            println!("{op}");
         }
 
         if config.bench {

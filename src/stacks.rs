@@ -109,19 +109,11 @@ impl FromStr for Operation {
     }
 }
 
-// Ignore operations will be ignored when optimization is ON
-// Later, optimizer will go over the Logs, and switch off useless ops
-#[derive(Debug, Clone)]
-pub enum Log {
-    Execute(Operation),
-    Ignore(Operation),
-}
-
 #[derive(Debug, Clone)]
 pub struct StackPair {
     a: VecDeque<usize>,
     b: VecDeque<usize>,
-    logs: Vec<Log>,
+    logs: Vec<Operation>,
 }
 
 impl StackPair {
@@ -134,12 +126,6 @@ impl StackPair {
         }
     }
 
-    // Idea here is that if operation wasn't successful,
-    // it means it would do nothing.
-    // So, in optimization mode, we just gonna ignore it.
-    // In case of double ops, we do OR,
-    // because if at least 1 op was needed,
-    // then we keep it the way it is, since its cost is 1 op anyway
     pub fn execute(&mut self, op: Operation) {
         let success = match op {
             Operation::Sa => StackPair::swap(&mut self.a),
@@ -154,12 +140,9 @@ impl StackPair {
             Operation::Rrb => StackPair::rev_rotate(&mut self.b),
             Operation::Rrr => StackPair::both(&mut self.a, &mut self.b, StackPair::rev_rotate),
         };
-        let entry = if success {
-            Log::Execute(op)
-        } else {
-            Log::Ignore(op)
-        };
-        self.logs.push(entry);
+        if success {
+            self.logs.push(op);
+        }
     }
 
     pub fn a(&self) -> &VecDeque<usize> {
@@ -174,11 +157,11 @@ impl StackPair {
         self.b.is_empty() && self.a.iter().is_sorted()
     }
 
-    pub fn logs(&self) -> &[Log] {
+    pub fn logs(&self) -> &[Operation] {
         &self.logs
     }
 
-    pub fn set_logs(&mut self, logs: Vec<Log>) {
+    pub fn set_logs(&mut self, logs: Vec<Operation>) {
         self.logs = logs;
     }
 
@@ -186,16 +169,6 @@ impl StackPair {
         self.logs.len()
     }
 
-    pub fn total_ops_opt(&self) -> usize {
-        self.logs
-            .iter()
-            .filter(|l| matches!(l, Log::Execute(_)))
-            .count()
-    }
-
-    // We can't use || because it's lazy
-    // meaning, if f(a) was true,
-    // it won't execute f(b)
     fn both(
         a: &mut VecDeque<usize>,
         b: &mut VecDeque<usize>,

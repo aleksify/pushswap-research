@@ -28,13 +28,13 @@ pub fn bench_all(results: &[(stacks::StackPair, algo::Algorithm, usize)], disord
         let label = format!("{prefix}{}:", algo);
         eprintln!(
             "[bench] {label:<w$}{}({pre_opt})",
-            s.total_ops_opt(),
+            s.total_ops(),
         );
     }
 }
 
 pub fn bench(stacks: &stacks::StackPair, disorder: f64, strategy: &str, pre_opt: usize) {
-    use stacks::{Log, Operation};
+    use stacks::Operation;
 
     let mut sa = 0u32;
     let mut sb = 0u32;
@@ -48,21 +48,19 @@ pub fn bench(stacks: &stacks::StackPair, disorder: f64, strategy: &str, pre_opt:
     let mut rrb = 0u32;
     let mut rrr = 0u32;
 
-    for log in stacks.logs() {
-        if let Log::Execute(op) = log {
-            match op {
-                Operation::Sa => sa += 1,
-                Operation::Sb => sb += 1,
-                Operation::Ss => ss += 1,
-                Operation::Pa => pa += 1,
-                Operation::Pb => pb += 1,
-                Operation::Ra => ra += 1,
-                Operation::Rb => rb += 1,
-                Operation::Rr => rr += 1,
-                Operation::Rra => rra += 1,
-                Operation::Rrb => rrb += 1,
-                Operation::Rrr => rrr += 1,
-            }
+    for op in stacks.logs() {
+        match op {
+            Operation::Sa => sa += 1,
+            Operation::Sb => sb += 1,
+            Operation::Ss => ss += 1,
+            Operation::Pa => pa += 1,
+            Operation::Pb => pb += 1,
+            Operation::Ra => ra += 1,
+            Operation::Rb => rb += 1,
+            Operation::Rr => rr += 1,
+            Operation::Rra => rra += 1,
+            Operation::Rrb => rrb += 1,
+            Operation::Rrr => rrr += 1,
         }
     }
     let total = sa + sb + ss + pa + pb + ra + rb + rr + rra + rrb + rrr;

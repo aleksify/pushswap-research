@@ -1,4 +1,4 @@
-use crate::stacks::{Log, Operation};
+use crate::stacks::Operation;
 use Operation::*;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -153,17 +153,9 @@ fn pass_peephole(ops: &mut Vec<Operation>) -> bool {
 // Main entry point
 // ====================================================================
 
-/// Optimize a log sequence using generated peephole rules and
+/// Optimize an operation sequence using generated peephole rules and
 /// commutativity-based normalization. Runs in a fixed-point loop.
-pub fn optimize(logs: Vec<Log>) -> Vec<Log> {
-    let mut ops: Vec<Operation> = logs
-        .iter()
-        .filter_map(|l| match l {
-            Log::Execute(op) => Some(*op),
-            _ => None,
-        })
-        .collect();
-
+pub fn optimize(mut ops: Vec<Operation>) -> Vec<Operation> {
     loop {
         let mut changed = false;
         changed |= pass_normalize(&mut ops);
@@ -173,7 +165,7 @@ pub fn optimize(logs: Vec<Log>) -> Vec<Log> {
         }
     }
 
-    ops.into_iter().map(Log::Execute).collect()
+    ops
 }
 
 #[cfg(test)]
@@ -218,22 +210,9 @@ mod tests {
         );
     }
 
-    fn exec_ops(logs: &[Log]) -> Vec<Operation> {
-        logs.iter()
-            .filter_map(|l| match l {
-                Log::Execute(op) => Some(*op),
-                _ => None,
-            })
-            .collect()
-    }
-
-    fn make_logs(ops: &[Operation]) -> Vec<Log> {
-        ops.iter().map(|&op| Log::Execute(op)).collect()
-    }
-
     fn assert_optimizes_to(input: &[Operation], expected: &[Operation]) {
         assert_eq!(
-            exec_ops(&optimize(make_logs(input))),
+            optimize(input.to_vec()),
             expected,
             "optimize({input:?})"
         );
@@ -302,15 +281,15 @@ mod tests {
 
     #[test]
     fn merge_across_commuting() {
-        let result = optimize(make_logs(&[Ra, Sb, Rb]));
-        assert_eq!(exec_ops(&result).len(), 2);
+        let result = optimize(vec![Ra, Sb, Rb]);
+        assert_eq!(result.len(), 2);
     }
 
     #[test]
     fn tier4_worked_example() {
         let ops = [Ra, Sb, Rra, Rb, Pb];
         let base = make_stacks();
-        let opt = exec_ops(&optimize(make_logs(&ops)));
+        let opt = optimize(ops.to_vec());
         assert_eq!(opt.len(), 3);
         assert_eq!(run_ops(&base, &ops), run_ops(&base, &opt));
     }
@@ -362,17 +341,10 @@ mod tests {
     }
 
     #[test]
-    fn ignores_stripped() {
-        let logs = vec![Log::Ignore(Sa), Log::Execute(Ra), Log::Execute(Rra)];
-        let result = optimize(logs);
-        assert_eq!(exec_ops(&result), vec![]);
-    }
-
-    #[test]
     fn complex_sequence_preserves_semantics() {
         let ops = [Ra, Sb, Rra, Rb, Sa, Sa, Pb, Rr, Rrr, Ra, Pb, Rra];
         let base = make_stacks();
-        let opt = exec_ops(&optimize(make_logs(&ops)));
+        let opt = optimize(ops.to_vec());
         assert_eq!(run_ops(&base, &ops), run_ops(&base, &opt));
         assert!(opt.len() <= ops.len());
     }
