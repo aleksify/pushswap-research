@@ -1,19 +1,20 @@
 use crate::stacks::{Log, Operation};
+use Operation::*;
 
 // ---- Operation classification ----
 
 fn is_a_only(op: Operation) -> bool {
-    matches!(op, Operation::Sa | Operation::Ra | Operation::Rra)
+    matches!(op, Sa | Ra | Rra)
 }
 
 fn is_b_only(op: Operation) -> bool {
-    matches!(op, Operation::Sb | Operation::Rb | Operation::Rrb)
+    matches!(op, Sb | Rb | Rrb)
 }
 
 fn is_barrier(op: Operation) -> bool {
     matches!(
         op,
-        Operation::Ss | Operation::Rr | Operation::Rrr | Operation::Pa | Operation::Pb
+        Ss | Rr | Rrr | Pa | Pb
     )
 }
 
@@ -36,7 +37,7 @@ fn op_at(logs: &[Log], idx: usize) -> Operation {
 // ---- Tier 1: Adjacent cancellation (length-2 → 0) ----
 
 fn tier1_cancel(a: Operation, b: Operation) -> bool {
-    use Operation::*;
+
     matches!(
         (a, b),
         (Sa, Sa)
@@ -56,7 +57,7 @@ fn tier1_cancel(a: Operation, b: Operation) -> bool {
 // ---- Tier 2: Adjacent merge (length-2 → 1) ----
 
 fn tier2_merge(a: Operation, b: Operation) -> Option<Operation> {
-    use Operation::*;
+
     match (a, b) {
         (Sa, Sb) | (Sb, Sa) => Some(Ss),
         (Ra, Rb) | (Rb, Ra) => Some(Rr),
@@ -68,7 +69,7 @@ fn tier2_merge(a: Operation, b: Operation) -> Option<Operation> {
 // ---- Tier 3: Decomposition rewrite (length-2 → 1) ----
 
 fn tier3_decompose(a: Operation, b: Operation) -> Option<Operation> {
-    use Operation::*;
+
     match (a, b) {
         (Ss, Sa) | (Sa, Ss) => Some(Sb),
         (Ss, Sb) | (Sb, Ss) => Some(Sa),
@@ -83,7 +84,7 @@ fn tier3_decompose(a: Operation, b: Operation) -> Option<Operation> {
 // ---- Tier 5: Length-3 algebraic rewrites (length-3 → 2) ----
 
 fn tier5_rewrite(a: Operation, b: Operation, c: Operation) -> Option<(Operation, Operation)> {
-    use Operation::*;
+
     match (a, b, c) {
         (Ra, Pb, Rra) => Some((Sa, Pb)),
         (Rb, Pa, Rrb) => Some((Sb, Pa)),
@@ -114,7 +115,7 @@ fn reduce_pure(ops: &[Operation]) -> Vec<Operation> {
 /// Merge matching A/B op pairs into combined ops (Tier 2 zip).
 /// E.g. [ra,ra] + [rb,rb] → [rr,rr]; [ra,ra,ra] + [rb] → [rr,ra,ra].
 fn zip_tier2_merge(a_ops: &[Operation], b_ops: &[Operation]) -> Vec<Operation> {
-    use Operation::*;
+
 
     let a_sa = a_ops.iter().filter(|&&op| op == Sa).count();
     let a_ra = a_ops.iter().filter(|&&op| op == Ra).count();
@@ -167,15 +168,8 @@ fn pass_adjacent(logs: &mut [Log]) -> bool {
                     None => break,
                 },
             }
-        } else if let Some(merged) = tier2_merge(a, b) {
-            logs[i] = Log::Execute(merged);
-            logs[j] = Log::Ignore(b);
-            changed = true;
-            if let Some(prev) = prev_exec(logs, i) {
-                i = prev;
-            }
-        } else if let Some(result) = tier3_decompose(a, b) {
-            logs[i] = Log::Execute(result);
+        } else if let Some(replacement) = tier2_merge(a, b).or_else(|| tier3_decompose(a, b)) {
+            logs[i] = Log::Execute(replacement);
             logs[j] = Log::Ignore(b);
             changed = true;
             if let Some(prev) = prev_exec(logs, i) {
@@ -242,19 +236,20 @@ fn pass_tier4(logs: &mut [Log]) -> bool {
         let b_reduced = reduce_pure(&b_ops);
         let merged = zip_tier2_merge(&a_reduced, &b_reduced);
 
-        let orig_ops: Vec<Operation> =
-            block_indices.iter().map(|&idx| op_at(logs, idx)).collect();
-
-        if merged.len() != orig_ops.len() || merged != orig_ops {
-            changed = true;
-            for (k, &new_op) in merged.iter().enumerate() {
-                logs[block_indices[k]] = Log::Execute(new_op);
+        // Write back and detect changes inline
+        let mut block_changed = false;
+        for (k, &new_op) in merged.iter().enumerate() {
+            if op_at(logs, block_indices[k]) != new_op {
+                block_changed = true;
             }
-            for k in merged.len()..block_indices.len() {
-                let old_op = op_at(logs, block_indices[k]);
-                logs[block_indices[k]] = Log::Ignore(old_op);
-            }
+            logs[block_indices[k]] = Log::Execute(new_op);
         }
+        for k in merged.len()..block_indices.len() {
+            block_changed = true;
+            let old_op = op_at(logs, block_indices[k]);
+            logs[block_indices[k]] = Log::Ignore(old_op);
+        }
+        changed |= block_changed;
     }
 
     changed
@@ -298,8 +293,7 @@ fn pass_tier5(logs: &mut [Log]) -> bool {
 
 /// Optimize a log sequence by replacing redundant ops with Ignore.
 /// Runs Tiers 1-5 in a fixed-point loop until no more rewrites fire.
-pub fn optimize(logs: Vec<Log>) -> Vec<Log> {
-    let mut logs = logs;
+pub fn optimize(mut logs: Vec<Log>) -> Vec<Log> {
     loop {
         let mut changed = false;
         changed |= pass_adjacent(&mut logs);
@@ -317,7 +311,7 @@ mod tests {
     use super::*;
     use crate::stacks::StackPair;
     use std::collections::VecDeque;
-    use Operation::*;
+
 
     /// StackPair with 10 elements, 3 pushed to B — both stacks populated.
     fn make_stacks() -> StackPair {
@@ -340,29 +334,20 @@ mod tests {
         snapshot(&s)
     }
 
-    /// Assert that applying `ops` leaves stacks unchanged (identity).
     fn assert_identity(ops: &[Operation]) {
         let s = make_stacks();
         let before = snapshot(&s);
         let after = run_ops(&s, ops);
-        assert_eq!(before, after, "ops {ops:?} should be identity");
+        assert_eq!(before, after, "{ops:?} should be identity");
     }
 
-    /// Assert that two op sequences produce identical stack states.
-    fn assert_equivalent(ops_a: &[Operation], ops_b: &[Operation]) {
+    fn assert_equivalent(lhs: &[Operation], rhs: &[Operation]) {
         let s = make_stacks();
-        let result_a = run_ops(&s, ops_a);
-        let result_b = run_ops(&s, ops_b);
         assert_eq!(
-            result_a, result_b,
-            "ops {ops_a:?} and {ops_b:?} should be equivalent"
+            run_ops(&s, lhs),
+            run_ops(&s, rhs),
+            "{lhs:?} should equal {rhs:?}"
         );
-    }
-
-    fn exec_count(logs: &[Log]) -> usize {
-        logs.iter()
-            .filter(|l| matches!(l, Log::Execute(_)))
-            .count()
     }
 
     fn exec_ops(logs: &[Log]) -> Vec<Operation> {
@@ -378,181 +363,83 @@ mod tests {
         ops.iter().map(|&op| Log::Execute(op)).collect()
     }
 
-    // ================================================================
-    // Tier 1: each canceling pair is identity on real stacks
-    // ================================================================
-
-    #[test]
-    fn tier1_sa_sa_identity() {
-        assert_identity(&[Sa, Sa]);
-    }
-    #[test]
-    fn tier1_sb_sb_identity() {
-        assert_identity(&[Sb, Sb]);
-    }
-    #[test]
-    fn tier1_ss_ss_identity() {
-        assert_identity(&[Ss, Ss]);
-    }
-    #[test]
-    fn tier1_pa_pb_identity() {
-        assert_identity(&[Pa, Pb]);
-    }
-    #[test]
-    fn tier1_pb_pa_identity() {
-        assert_identity(&[Pb, Pa]);
-    }
-    #[test]
-    fn tier1_ra_rra_identity() {
-        assert_identity(&[Ra, Rra]);
-    }
-    #[test]
-    fn tier1_rra_ra_identity() {
-        assert_identity(&[Rra, Ra]);
-    }
-    #[test]
-    fn tier1_rb_rrb_identity() {
-        assert_identity(&[Rb, Rrb]);
-    }
-    #[test]
-    fn tier1_rrb_rb_identity() {
-        assert_identity(&[Rrb, Rb]);
-    }
-    #[test]
-    fn tier1_rr_rrr_identity() {
-        assert_identity(&[Rr, Rrr]);
-    }
-    #[test]
-    fn tier1_rrr_rr_identity() {
-        assert_identity(&[Rrr, Rr]);
-    }
-
-    // Tier 1 optimizer: canceled pairs produce 0 execute ops
-    #[test]
-    fn tier1_optimizer_sa_sa() {
-        assert_eq!(exec_count(&optimize(make_logs(&[Sa, Sa]))), 0);
-    }
-    #[test]
-    fn tier1_optimizer_ra_rra() {
-        assert_eq!(exec_count(&optimize(make_logs(&[Ra, Rra]))), 0);
-    }
-    #[test]
-    fn tier1_optimizer_pa_pb() {
-        assert_eq!(exec_count(&optimize(make_logs(&[Pa, Pb]))), 0);
-    }
-    #[test]
-    fn tier1_optimizer_rr_rrr() {
-        assert_eq!(exec_count(&optimize(make_logs(&[Rr, Rrr]))), 0);
+    fn assert_optimizes_to(input: &[Operation], expected: &[Operation]) {
+        assert_eq!(
+            exec_ops(&optimize(make_logs(input))),
+            expected,
+            "optimize({input:?})"
+        );
     }
 
     // ================================================================
-    // Tier 2: each merging pair is equivalent to the combined op
+    // Tier 1: canceling pairs are identity, optimizer eliminates them
     // ================================================================
 
     #[test]
-    fn tier2_sa_sb_equiv_ss() {
-        assert_equivalent(&[Sa, Sb], &[Ss]);
-    }
-    #[test]
-    fn tier2_sb_sa_equiv_ss() {
-        assert_equivalent(&[Sb, Sa], &[Ss]);
-    }
-    #[test]
-    fn tier2_ra_rb_equiv_rr() {
-        assert_equivalent(&[Ra, Rb], &[Rr]);
-    }
-    #[test]
-    fn tier2_rb_ra_equiv_rr() {
-        assert_equivalent(&[Rb, Ra], &[Rr]);
-    }
-    #[test]
-    fn tier2_rra_rrb_equiv_rrr() {
-        assert_equivalent(&[Rra, Rrb], &[Rrr]);
-    }
-    #[test]
-    fn tier2_rrb_rra_equiv_rrr() {
-        assert_equivalent(&[Rrb, Rra], &[Rrr]);
-    }
-
-    // Tier 2 optimizer: pairs merge to single combined op
-    #[test]
-    fn tier2_optimizer_sa_sb() {
-        assert_eq!(exec_ops(&optimize(make_logs(&[Sa, Sb]))), vec![Ss]);
-    }
-    #[test]
-    fn tier2_optimizer_ra_rb() {
-        assert_eq!(exec_ops(&optimize(make_logs(&[Ra, Rb]))), vec![Rr]);
-    }
-    #[test]
-    fn tier2_optimizer_rra_rrb() {
-        assert_eq!(exec_ops(&optimize(make_logs(&[Rra, Rrb]))), vec![Rrr]);
+    fn tier1_cancellations() {
+        let pairs: &[&[Operation]] = &[
+            &[Sa, Sa],
+            &[Sb, Sb],
+            &[Ss, Ss],
+            &[Pa, Pb],
+            &[Pb, Pa],
+            &[Ra, Rra],
+            &[Rra, Ra],
+            &[Rb, Rrb],
+            &[Rrb, Rb],
+            &[Rr, Rrr],
+            &[Rrr, Rr],
+        ];
+        for ops in pairs {
+            assert_identity(ops);
+            assert_optimizes_to(ops, &[]);
+        }
     }
 
     // ================================================================
-    // Tier 3: each decomposition is equivalent to its replacement
+    // Tier 2: A+B pairs equivalent to combined op, optimizer merges
     // ================================================================
 
     #[test]
-    fn tier3_ss_sa_equiv_sb() {
-        assert_equivalent(&[Ss, Sa], &[Sb]);
-    }
-    #[test]
-    fn tier3_sa_ss_equiv_sb() {
-        assert_equivalent(&[Sa, Ss], &[Sb]);
-    }
-    #[test]
-    fn tier3_ss_sb_equiv_sa() {
-        assert_equivalent(&[Ss, Sb], &[Sa]);
-    }
-    #[test]
-    fn tier3_sb_ss_equiv_sa() {
-        assert_equivalent(&[Sb, Ss], &[Sa]);
-    }
-    #[test]
-    fn tier3_rr_rra_equiv_rb() {
-        assert_equivalent(&[Rr, Rra], &[Rb]);
-    }
-    #[test]
-    fn tier3_rra_rr_equiv_rb() {
-        assert_equivalent(&[Rra, Rr], &[Rb]);
-    }
-    #[test]
-    fn tier3_rr_rrb_equiv_ra() {
-        assert_equivalent(&[Rr, Rrb], &[Ra]);
-    }
-    #[test]
-    fn tier3_rrb_rr_equiv_ra() {
-        assert_equivalent(&[Rrb, Rr], &[Ra]);
-    }
-    #[test]
-    fn tier3_rrr_ra_equiv_rrb() {
-        assert_equivalent(&[Rrr, Ra], &[Rrb]);
-    }
-    #[test]
-    fn tier3_ra_rrr_equiv_rrb() {
-        assert_equivalent(&[Ra, Rrr], &[Rrb]);
-    }
-    #[test]
-    fn tier3_rrr_rb_equiv_rra() {
-        assert_equivalent(&[Rrr, Rb], &[Rra]);
-    }
-    #[test]
-    fn tier3_rb_rrr_equiv_rra() {
-        assert_equivalent(&[Rb, Rrr], &[Rra]);
+    fn tier2_merges() {
+        let rules: &[(&[Operation], Operation)] = &[
+            (&[Sa, Sb], Ss),
+            (&[Sb, Sa], Ss),
+            (&[Ra, Rb], Rr),
+            (&[Rb, Ra], Rr),
+            (&[Rra, Rrb], Rrr),
+            (&[Rrb, Rra], Rrr),
+        ];
+        for &(input, expected) in rules {
+            assert_equivalent(input, &[expected]);
+            assert_optimizes_to(input, &[expected]);
+        }
     }
 
-    // Tier 3 optimizer
+    // ================================================================
+    // Tier 3: combined + half → other half, optimizer decomposes
+    // ================================================================
+
     #[test]
-    fn tier3_optimizer_ss_sa() {
-        assert_eq!(exec_ops(&optimize(make_logs(&[Ss, Sa]))), vec![Sb]);
-    }
-    #[test]
-    fn tier3_optimizer_rr_rra() {
-        assert_eq!(exec_ops(&optimize(make_logs(&[Rr, Rra]))), vec![Rb]);
-    }
-    #[test]
-    fn tier3_optimizer_rrr_ra() {
-        assert_eq!(exec_ops(&optimize(make_logs(&[Rrr, Ra]))), vec![Rrb]);
+    fn tier3_decompositions() {
+        let rules: &[(&[Operation], Operation)] = &[
+            (&[Ss, Sa], Sb),
+            (&[Sa, Ss], Sb),
+            (&[Ss, Sb], Sa),
+            (&[Sb, Ss], Sa),
+            (&[Rr, Rra], Rb),
+            (&[Rra, Rr], Rb),
+            (&[Rr, Rrb], Ra),
+            (&[Rrb, Rr], Ra),
+            (&[Rrr, Ra], Rrb),
+            (&[Ra, Rrr], Rrb),
+            (&[Rrr, Rb], Rra),
+            (&[Rb, Rrr], Rra),
+        ];
+        for &(input, expected) in rules {
+            assert_equivalent(input, &[expected]);
+            assert_optimizes_to(input, &[expected]);
+        }
     }
 
     // ================================================================
@@ -560,39 +447,26 @@ mod tests {
     // ================================================================
 
     #[test]
-    fn tier4_ra_sb_rra_equiv_sb() {
+    fn tier4_cancel_across_commuting() {
         assert_equivalent(&[Ra, Sb, Rra], &[Sb]);
+        assert_optimizes_to(&[Ra, Sb, Rra], &[Sb]);
     }
 
     #[test]
-    fn tier4_optimizer_cancel_across_commuting() {
-        let result = optimize(make_logs(&[Ra, Sb, Rra]));
-        assert_eq!(exec_ops(&result), vec![Sb]);
-    }
-
-    #[test]
-    fn tier4_optimizer_merge_across_commuting() {
-        // ra sb rb → block [ra, sb, rb]. A=[ra], B=[sb,rb].
-        // No cancel. Merge ra+rb → rr. Left: sb. Result: [rr, sb].
+    fn tier4_merge_across_commuting() {
+        // A=[ra], B=[sb,rb]. Merge ra+rb → rr. Left: sb.
         let result = optimize(make_logs(&[Ra, Sb, Rb]));
-        assert_eq!(exec_count(&result), 2);
+        assert_eq!(exec_ops(&result).len(), 2);
     }
 
     #[test]
     fn tier4_worked_example() {
         // From spec: ra sb rra rb pb → sb rb pb (5 → 3)
-        let result = optimize(make_logs(&[Ra, Sb, Rra, Rb, Pb]));
-        assert_eq!(exec_count(&result), 3);
-    }
-
-    #[test]
-    fn tier4_preserves_semantics() {
         let ops = [Ra, Sb, Rra, Rb, Pb];
         let base = make_stacks();
-        let original = run_ops(&base, &ops);
-        let opt_ops = exec_ops(&optimize(make_logs(&ops)));
-        let optimized = run_ops(&base, &opt_ops);
-        assert_eq!(original, optimized);
+        let opt = exec_ops(&optimize(make_logs(&ops)));
+        assert_eq!(opt.len(), 3);
+        assert_eq!(run_ops(&base, &ops), run_ops(&base, &opt));
     }
 
     // ================================================================
@@ -600,36 +474,17 @@ mod tests {
     // ================================================================
 
     #[test]
-    fn tier5_ra_pb_rra_equiv_sa_pb() {
-        assert_equivalent(&[Ra, Pb, Rra], &[Sa, Pb]);
-    }
-    #[test]
-    fn tier5_rb_pa_rrb_equiv_sb_pa() {
-        assert_equivalent(&[Rb, Pa, Rrb], &[Sb, Pa]);
-    }
-    #[test]
-    fn tier5_ra_pa_rra_equiv_pa_sa() {
-        assert_equivalent(&[Ra, Pa, Rra], &[Pa, Sa]);
-    }
-    #[test]
-    fn tier5_rb_pb_rrb_equiv_pb_sb() {
-        assert_equivalent(&[Rb, Pb, Rrb], &[Pb, Sb]);
-    }
-
-    #[test]
-    fn tier5_optimizer_ra_pb_rra() {
-        let result = optimize(make_logs(&[Ra, Pb, Rra]));
-        assert_eq!(exec_count(&result), 2);
-    }
-
-    #[test]
-    fn tier5_preserves_semantics() {
-        let ops = [Ra, Pb, Rra];
-        let base = make_stacks();
-        let original = run_ops(&base, &ops);
-        let opt_ops = exec_ops(&optimize(make_logs(&ops)));
-        let optimized = run_ops(&base, &opt_ops);
-        assert_eq!(original, optimized);
+    fn tier5_rewrites() {
+        let rules: &[(&[Operation], &[Operation])] = &[
+            (&[Ra, Pb, Rra], &[Sa, Pb]),
+            (&[Rb, Pa, Rrb], &[Sb, Pa]),
+            (&[Ra, Pa, Rra], &[Pa, Sa]),
+            (&[Rb, Pb, Rrb], &[Pb, Sb]),
+        ];
+        for &(input, expected) in rules {
+            assert_equivalent(input, expected);
+            assert_optimizes_to(input, expected);
+        }
     }
 
     // ================================================================
@@ -639,19 +494,13 @@ mod tests {
     #[test]
     fn cascade_merge_then_decompose() {
         // ra rb rra → merge(ra+rb)=rr, then tier3(rr+rra)=rb
-        let result = optimize(make_logs(&[Ra, Rb, Rra]));
-        assert_eq!(exec_ops(&result), vec![Rb]);
-    }
-
-    #[test]
-    fn cascade_merge_then_decompose_equiv() {
         assert_equivalent(&[Ra, Rb, Rra], &[Rb]);
+        assert_optimizes_to(&[Ra, Rb, Rra], &[Rb]);
     }
 
     #[test]
     fn cascade_multiple_cancellations() {
-        let result = optimize(make_logs(&[Sa, Sa, Ra, Rra]));
-        assert_eq!(exec_count(&result), 0);
+        assert_optimizes_to(&[Sa, Sa, Ra, Rra], &[]);
     }
 
     // ================================================================
@@ -665,21 +514,19 @@ mod tests {
 
     #[test]
     fn single_op_unchanged() {
-        assert_eq!(exec_ops(&optimize(make_logs(&[Ra]))), vec![Ra]);
+        assert_optimizes_to(&[Ra], &[Ra]);
     }
 
     #[test]
     fn no_optimization_possible() {
-        let result = optimize(make_logs(&[Ra, Pa, Sb]));
-        assert_eq!(exec_count(&result), 3);
+        assert_optimizes_to(&[Ra, Pa, Sb], &[Ra, Pa, Sb]);
     }
 
     #[test]
     fn ignores_preserved() {
         let logs = vec![Log::Ignore(Sa), Log::Execute(Ra), Log::Execute(Rra)];
         let result = optimize(logs);
-        // Ra+Rra cancel, Ignore(Sa) preserved
-        assert_eq!(exec_count(&result), 0);
+        assert_eq!(exec_ops(&result), vec![]);
         assert!(matches!(result[0], Log::Ignore(_)));
     }
 
@@ -687,10 +534,8 @@ mod tests {
     fn complex_sequence_preserves_semantics() {
         let ops = [Ra, Sb, Rra, Rb, Sa, Sa, Pb, Rr, Rrr, Ra, Pb, Rra];
         let base = make_stacks();
-        let original = run_ops(&base, &ops);
-        let opt_ops = exec_ops(&optimize(make_logs(&ops)));
-        let optimized = run_ops(&base, &opt_ops);
-        assert_eq!(original, optimized);
-        assert!(opt_ops.len() <= ops.len());
+        let opt = exec_ops(&optimize(make_logs(&ops)));
+        assert_eq!(run_ops(&base, &ops), run_ops(&base, &opt));
+        assert!(opt.len() <= ops.len());
     }
 }
