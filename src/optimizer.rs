@@ -67,9 +67,9 @@ fn is_barrier(op: Operation) -> bool {
 // Passes
 
 /// Normalization: within blocks between barriers, reorder so all A-ops
-/// come before B-ops. This exposes adjacent same-stack ops for the
-/// peephole pass to cancel or merge.
-fn pass_normalize(ops: &mut [Operation]) -> bool {
+/// come before B-ops (or B before A if `b_first`). This exposes adjacent
+/// same-stack ops for the peephole pass to cancel or merge.
+fn pass_normalize(ops: &mut [Operation], b_first: bool) -> bool {
     let mut changed = false;
     let mut i = 0;
 
@@ -98,8 +98,13 @@ fn pass_normalize(ops: &mut [Operation]) -> bool {
             if new_len == old_block.len() {
                 // Block is pure A/B ops — check if reorder changes anything
                 let mut reordered = Vec::with_capacity(new_len);
-                reordered.extend(&a_ops);
-                reordered.extend(&b_ops);
+                if b_first {
+                    reordered.extend(&b_ops);
+                    reordered.extend(&a_ops);
+                } else {
+                    reordered.extend(&a_ops);
+                    reordered.extend(&b_ops);
+                }
 
                 if reordered != old_block {
                     ops[block_start..block_end].copy_from_slice(&reordered);
@@ -156,19 +161,25 @@ fn pass_peephole(ops: &mut Vec<Operation>) -> bool {
 // Main entry point
 // ====================================================================
 
-/// Optimize an operation sequence using generated peephole rules and
-/// commutativity-based normalization. Runs in a fixed-point loop.
-pub fn optimize(mut ops: Vec<Operation>) -> Vec<Operation> {
+fn optimize_with_order(mut ops: Vec<Operation>, b_first: bool) -> Vec<Operation> {
     loop {
         let mut changed = false;
-        changed |= pass_normalize(&mut ops);
+        changed |= pass_normalize(&mut ops, b_first);
         changed |= pass_peephole(&mut ops);
         if !changed {
             break;
         }
     }
-
     ops
+}
+
+/// Optimize an operation sequence using generated peephole rules and
+/// commutativity-based normalization. Tries both A-first and B-first
+/// block orderings and returns the shorter result.
+pub fn optimize(ops: Vec<Operation>) -> Vec<Operation> {
+    let a_first = optimize_with_order(ops.clone(), false);
+    let b_first = optimize_with_order(ops, true);
+    if a_first.len() <= b_first.len() { a_first } else { b_first }
 }
 
 #[cfg(test)]
