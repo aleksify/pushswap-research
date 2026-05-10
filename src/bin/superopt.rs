@@ -202,15 +202,17 @@ fn make_config(a_size: usize, b_size: usize) -> StackPair {
 }
 
 /// Test that `lhs` and `rhs` produce identical stacks across 1,000 random
-/// configurations. Stack sizes range from 0 to 2*N+10 with varying A/B split.
-/// Operations are value-blind, so only stack sizes affect behavior.
+/// configurations. Both stacks start with enough elements that no operation
+/// in either sequence is a no-op (min 2 per stack for swaps/rotates, plus
+/// enough for the longest run of pushes in one direction).
 fn verify_rule(lhs: &[Operation], rhs: &[Operation], n: usize) -> bool {
     let mut rng = rand::rng();
     let max_total = 2 * n + 10;
+    let min_per_stack = lhs.len().max(rhs.len()).max(2);
 
     for _ in 0..1000 {
-        let total = rng.random_range(0..=max_total);
-        let a_size = rng.random_range(0..=total);
+        let total = rng.random_range(2 * min_per_stack..=max_total);
+        let a_size = rng.random_range(min_per_stack..=total - min_per_stack);
         let b_size = total - a_size;
 
         let base = make_config(a_size, b_size);
