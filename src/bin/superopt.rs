@@ -1,5 +1,5 @@
 use push_swap::stacks::{Operation, StackPair};
-// use rand::RngExt;  // needed by fuzz verifier
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -10,38 +10,70 @@ const N: usize = 10;
 
 // ── Packed Types ─────────────────────────────────────────────────────
 
-/// A stack packed into a u128.
+/// A stack packed into split registers: lo (u128) + hi (u64) + len (u8).
 ///
-/// Layout: `[len:5][elem_0:5][elem_1:5]...[elem_{len-1}:5]`
-/// elem_0 is the top of the stack. For N=10, max 20 elements × 5 bits
-/// + 5 bits length = 105 bits ≤ 128.
+/// 6-bit elements (values 0..63, sufficient for 2*stack_size=42 at N=10).
+/// - `lo`: elements 0..20 (21 slots × 6 bits = 126 bits ≤ 128)
+/// - `hi`: elements 21..30 (10 slots × 6 bits = 60 bits ≤ 64)
+/// - Max 31 elements (stack_size 21 + depth 10).
+///
+/// elem_0 = top of stack.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-struct PackedStack(u128);
+struct PackedStack {
+    lo: u128,
+    hi: u64,
+    len: u8,
+}
 
 impl PackedStack {
-    const ELEM_BITS: u32 = 5;
-    const LEN_BITS: u32 = 5;
-    const ELEM_MASK: u128 = 0x1F;
+    const ELEM_BITS: u32 = 6;
+    const ELEM_MASK_128: u128 = 0x3F;
+    const ELEM_MASK_64: u64 = 0x3F;
+    const LO_SLOTS: u32 = 21;
+    const LO_MASK: u128 = (1u128 << (21 * 6)) - 1;
 
     fn len(self) -> u32 {
-        (self.0 & Self::ELEM_MASK) as u32
+        self.len as u32
     }
 
-    fn elem(self, i: u32) -> u128 {
-        (self.0 >> (Self::LEN_BITS + i * Self::ELEM_BITS)) & Self::ELEM_MASK
+    fn elem(self, i: u32) -> u64 {
+        if i < Self::LO_SLOTS {
+            ((self.lo >> (i * Self::ELEM_BITS)) & Self::ELEM_MASK_128) as u64
+        } else {
+            let j = i - Self::LO_SLOTS;
+            (self.hi >> (j * Self::ELEM_BITS)) & Self::ELEM_MASK_64
+        }
     }
 
-    fn set_elem(self, i: u32, val: u128) -> Self {
-        let shift = Self::LEN_BITS + i * Self::ELEM_BITS;
-        Self((self.0 & !(Self::ELEM_MASK << shift)) | ((val & Self::ELEM_MASK) << shift))
+    fn set_elem(self, i: u32, val: u64) -> Self {
+        if i < Self::LO_SLOTS {
+            let shift = i * Self::ELEM_BITS;
+            Self {
+                lo: (self.lo & !(Self::ELEM_MASK_128 << shift))
+                    | ((val as u128 & Self::ELEM_MASK_128) << shift),
+                ..self
+            }
+        } else {
+            let j = i - Self::LO_SLOTS;
+            let shift = j * Self::ELEM_BITS;
+            Self {
+                hi: (self.hi & !(Self::ELEM_MASK_64 << shift))
+                    | ((val & Self::ELEM_MASK_64) << shift),
+                ..self
+            }
+        }
     }
 
     fn from_slice(elems: &[usize]) -> Self {
-        let mut p = Self(elems.len() as u128);
+        let mut s = Self {
+            lo: 0,
+            hi: 0,
+            len: elems.len() as u8,
+        };
         for (i, &val) in elems.iter().enumerate() {
-            p = p.set_elem(i as u32, val as u128);
+            s = s.set_elem(i as u32, val as u64);
         }
-        p
+        s
     }
 
     fn to_vec(self) -> Vec<usize> {
@@ -54,33 +86,42 @@ impl PackedStack {
         }
         let e0 = self.elem(0);
         let e1 = self.elem(1);
-        let mask = (Self::ELEM_MASK << Self::LEN_BITS)
-            | (Self::ELEM_MASK << (Self::LEN_BITS + Self::ELEM_BITS));
-        Self(
-            (self.0 & !mask)
-                | (e1 << Self::LEN_BITS)
-                | (e0 << (Self::LEN_BITS + Self::ELEM_BITS)),
+        let mask = Self::ELEM_MASK_128 | (Self::ELEM_MASK_128 << Self::ELEM_BITS);
+        Self {
+            lo: (self.lo & !mask) | (e1 as u128) | ((e0 as u128) << Self::ELEM_BITS),
+            ..self
+        }
+    }
+
+    fn pop_top(self) -> (Self, u64) {
+        debug_assert!(self.len() > 0);
+        let val = self.elem(0);
+        let carry = self.hi & Self::ELEM_MASK_64;
+        let new_lo = ((self.lo >> Self::ELEM_BITS)
+            | ((carry as u128) << ((Self::LO_SLOTS - 1) * Self::ELEM_BITS)))
+            & Self::LO_MASK;
+        let new_hi = self.hi >> Self::ELEM_BITS;
+        (
+            Self {
+                lo: new_lo,
+                hi: new_hi,
+                len: self.len - 1,
+            },
+            val,
         )
     }
 
-    fn pop_top(self) -> (Self, u128) {
-        debug_assert!(self.len() > 0);
-        let l = self.len();
-        let val = self.elem(0);
-        let src_start = Self::LEN_BITS + Self::ELEM_BITS;
-        let src_end = Self::LEN_BITS + l * Self::ELEM_BITS;
-        let mask = ((1u128 << src_end) - 1) & !((1u128 << src_start) - 1);
-        let shifted = (self.0 & mask) >> Self::ELEM_BITS;
-        (Self(((l - 1) as u128) | shifted), val)
-    }
-
-    fn push_top(self, val: u128) -> Self {
-        let l = self.len();
-        let src_start = Self::LEN_BITS;
-        let src_end = Self::LEN_BITS + l * Self::ELEM_BITS;
-        let mask = ((1u128 << src_end) - 1) & !((1u128 << src_start) - 1);
-        let shifted = (self.0 & mask) << Self::ELEM_BITS;
-        Self(((l + 1) as u128) | shifted | ((val & Self::ELEM_MASK) << Self::LEN_BITS))
+    fn push_top(self, val: u64) -> Self {
+        let overflow =
+            ((self.lo >> ((Self::LO_SLOTS - 1) * Self::ELEM_BITS)) & Self::ELEM_MASK_128) as u64;
+        let new_lo = ((self.lo << Self::ELEM_BITS) & Self::LO_MASK)
+            | ((val as u128) & Self::ELEM_MASK_128);
+        let new_hi = (self.hi << Self::ELEM_BITS) | (overflow & Self::ELEM_MASK_64);
+        Self {
+            lo: new_lo,
+            hi: new_hi,
+            len: self.len + 1,
+        }
     }
 
     fn rotate(self) -> Self {
@@ -89,11 +130,17 @@ impl PackedStack {
             return self;
         }
         let top = self.elem(0);
-        let src_start = Self::LEN_BITS + Self::ELEM_BITS;
-        let src_end = Self::LEN_BITS + l * Self::ELEM_BITS;
-        let mask = ((1u128 << src_end) - 1) & !((1u128 << src_start) - 1);
-        let shifted = (self.0 & mask) >> Self::ELEM_BITS;
-        Self((l as u128) | shifted).set_elem(l - 1, top)
+        let carry = self.hi & Self::ELEM_MASK_64;
+        let new_lo = ((self.lo >> Self::ELEM_BITS)
+            | ((carry as u128) << ((Self::LO_SLOTS - 1) * Self::ELEM_BITS)))
+            & Self::LO_MASK;
+        let new_hi = self.hi >> Self::ELEM_BITS;
+        Self {
+            lo: new_lo,
+            hi: new_hi,
+            len: self.len,
+        }
+        .set_elem(l - 1, top)
     }
 
     fn reverse_rotate(self) -> Self {
@@ -102,11 +149,18 @@ impl PackedStack {
             return self;
         }
         let bottom = self.elem(l - 1);
-        let src_start = Self::LEN_BITS;
-        let src_end = Self::LEN_BITS + (l - 1) * Self::ELEM_BITS;
-        let mask = ((1u128 << src_end) - 1) & !((1u128 << src_start) - 1);
-        let shifted = (self.0 & mask) << Self::ELEM_BITS;
-        Self((l as u128) | shifted | ((bottom & Self::ELEM_MASK) << Self::LEN_BITS))
+        let cleared = self.set_elem(l - 1, 0);
+        let overflow =
+            ((cleared.lo >> ((Self::LO_SLOTS - 1) * Self::ELEM_BITS)) & Self::ELEM_MASK_128)
+                as u64;
+        let new_lo = ((cleared.lo << Self::ELEM_BITS) & Self::LO_MASK)
+            | ((bottom as u128) & Self::ELEM_MASK_128);
+        let new_hi = (cleared.hi << Self::ELEM_BITS) | (overflow & Self::ELEM_MASK_64);
+        Self {
+            lo: new_lo,
+            hi: new_hi,
+            len: self.len,
+        }
     }
 }
 
@@ -392,55 +446,50 @@ fn search_bfs(
 }
 
 // ── Fuzz Verifier ────────────────────────────────────────────────────
-//
-// With stack_size = 2*n+1, the canonical state is large enough that no
-// rotation wraps and no stack empties during any sequence of length ≤ n.
-// All discovered rules are universal, making fuzz verification redundant.
-// Kept commented out for re-enabling if stack_size logic changes.
 
-// fn make_config(a_size: usize, b_size: usize) -> StackPair {
-//     let total = a_size + b_size;
-//     if total == 0 {
-//         return StackPair::new(vec![]);
-//     }
-//     let mut sp = StackPair::new((1..=total).collect());
-//     for _ in 0..b_size {
-//         sp.execute(Operation::Pb);
-//     }
-//     sp.set_logs(vec![]);
-//     sp
-// }
-//
-// fn verify_rule(lhs: PackedSequence, rhs: PackedSequence, n: usize) -> bool {
-//     let lhs_ops = lhs.to_vec();
-//     let rhs_ops = rhs.to_vec();
-//     let mut rng = rand::rng();
-//     let max_total = 2 * n + 10;
-//     let min_per_stack = lhs_ops.len().max(rhs_ops.len()).max(2);
-//
-//     for _ in 0..1000 {
-//         let total = rng.random_range(2 * min_per_stack..=max_total);
-//         let a_size = rng.random_range(min_per_stack..=total - min_per_stack);
-//         let b_size = total - a_size;
-//
-//         let base = make_config(a_size, b_size);
-//
-//         let mut sp_lhs = base.clone();
-//         for &op in &lhs_ops {
-//             sp_lhs.execute(op);
-//         }
-//
-//         let mut sp_rhs = base;
-//         for &op in &rhs_ops {
-//             sp_rhs.execute(op);
-//         }
-//
-//         if sp_lhs.a() != sp_rhs.a() || sp_lhs.b() != sp_rhs.b() {
-//             return false;
-//         }
-//     }
-//     true
-// }
+fn make_config(a_size: usize, b_size: usize) -> StackPair {
+    let total = a_size + b_size;
+    if total == 0 {
+        return StackPair::new(vec![]);
+    }
+    let mut sp = StackPair::new((1..=total).collect());
+    for _ in 0..b_size {
+        sp.execute(Operation::Pb);
+    }
+    sp.set_logs(vec![]);
+    sp
+}
+
+fn verify_rule(lhs: PackedSequence, rhs: PackedSequence, n: usize) -> bool {
+    let lhs_ops = lhs.to_vec();
+    let rhs_ops = rhs.to_vec();
+    let mut rng = rand::rng();
+    let max_total = 2 * n + 10;
+    let min_per_stack = lhs_ops.len().max(rhs_ops.len()).max(2);
+
+    for _ in 0..1000 {
+        let total = rng.random_range(2 * min_per_stack..=max_total);
+        let a_size = rng.random_range(min_per_stack..=total - min_per_stack);
+        let b_size = total - a_size;
+
+        let base = make_config(a_size, b_size);
+
+        let mut sp_lhs = base.clone();
+        for &op in &lhs_ops {
+            sp_lhs.execute(op);
+        }
+
+        let mut sp_rhs = base;
+        for &op in &rhs_ops {
+            sp_rhs.execute(op);
+        }
+
+        if sp_lhs.a() != sp_rhs.a() || sp_lhs.b() != sp_rhs.b() {
+            return false;
+        }
+    }
+    true
+}
 
 // ── Persistence ──────────────────────────────────────────────────────
 
@@ -628,6 +677,28 @@ fn main() {
         &mut rules,
         &mut reducible,
     );
+
+    // Fuzz-verify all discovered rules
+    let total_rules = rules.reductions.len() + rules.annihilators.len();
+    eprintln!("Fuzz-verifying {total_rules} rules...");
+    let mut fail_count = 0;
+    for &(from, to) in &rules.reductions {
+        if !verify_rule(from, to, n) {
+            eprintln!("  FUZZ FAIL: {} → {}", fmt_ops(from), fmt_ops(to));
+            fail_count += 1;
+        }
+    }
+    for &seq in &rules.annihilators {
+        if !verify_rule(seq, PackedSequence::empty(), n) {
+            eprintln!("  FUZZ FAIL: {} → ∅", fmt_ops(seq));
+            fail_count += 1;
+        }
+    }
+    if fail_count > 0 {
+        eprintln!("{fail_count} rules FAILED fuzz verification!");
+    } else {
+        eprintln!("All rules passed fuzz verification.");
+    }
 
     save_cache(sz, n, &oracle, &rules);
 
