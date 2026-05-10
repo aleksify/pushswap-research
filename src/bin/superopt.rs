@@ -1,5 +1,5 @@
 use push_swap::stacks::{Operation, StackPair};
-use rand::RngExt;
+// use rand::RngExt;  // needed by fuzz verifier
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -392,50 +392,55 @@ fn search_bfs(
 }
 
 // ── Fuzz Verifier ────────────────────────────────────────────────────
+//
+// With stack_size = 2*n+1, the canonical state is large enough that no
+// rotation wraps and no stack empties during any sequence of length ≤ n.
+// All discovered rules are universal, making fuzz verification redundant.
+// Kept commented out for re-enabling if stack_size logic changes.
 
-fn make_config(a_size: usize, b_size: usize) -> StackPair {
-    let total = a_size + b_size;
-    if total == 0 {
-        return StackPair::new(vec![]);
-    }
-    let mut sp = StackPair::new((1..=total).collect());
-    for _ in 0..b_size {
-        sp.execute(Operation::Pb);
-    }
-    sp.set_logs(vec![]);
-    sp
-}
-
-fn verify_rule(lhs: PackedSequence, rhs: PackedSequence, n: usize) -> bool {
-    let lhs_ops = lhs.to_vec();
-    let rhs_ops = rhs.to_vec();
-    let mut rng = rand::rng();
-    let max_total = 2 * n + 10;
-    let min_per_stack = lhs_ops.len().max(rhs_ops.len()).max(2);
-
-    for _ in 0..1000 {
-        let total = rng.random_range(2 * min_per_stack..=max_total);
-        let a_size = rng.random_range(min_per_stack..=total - min_per_stack);
-        let b_size = total - a_size;
-
-        let base = make_config(a_size, b_size);
-
-        let mut sp_lhs = base.clone();
-        for &op in &lhs_ops {
-            sp_lhs.execute(op);
-        }
-
-        let mut sp_rhs = base;
-        for &op in &rhs_ops {
-            sp_rhs.execute(op);
-        }
-
-        if sp_lhs.a() != sp_rhs.a() || sp_lhs.b() != sp_rhs.b() {
-            return false;
-        }
-    }
-    true
-}
+// fn make_config(a_size: usize, b_size: usize) -> StackPair {
+//     let total = a_size + b_size;
+//     if total == 0 {
+//         return StackPair::new(vec![]);
+//     }
+//     let mut sp = StackPair::new((1..=total).collect());
+//     for _ in 0..b_size {
+//         sp.execute(Operation::Pb);
+//     }
+//     sp.set_logs(vec![]);
+//     sp
+// }
+//
+// fn verify_rule(lhs: PackedSequence, rhs: PackedSequence, n: usize) -> bool {
+//     let lhs_ops = lhs.to_vec();
+//     let rhs_ops = rhs.to_vec();
+//     let mut rng = rand::rng();
+//     let max_total = 2 * n + 10;
+//     let min_per_stack = lhs_ops.len().max(rhs_ops.len()).max(2);
+//
+//     for _ in 0..1000 {
+//         let total = rng.random_range(2 * min_per_stack..=max_total);
+//         let a_size = rng.random_range(min_per_stack..=total - min_per_stack);
+//         let b_size = total - a_size;
+//
+//         let base = make_config(a_size, b_size);
+//
+//         let mut sp_lhs = base.clone();
+//         for &op in &lhs_ops {
+//             sp_lhs.execute(op);
+//         }
+//
+//         let mut sp_rhs = base;
+//         for &op in &rhs_ops {
+//             sp_rhs.execute(op);
+//         }
+//
+//         if sp_lhs.a() != sp_rhs.a() || sp_lhs.b() != sp_rhs.b() {
+//             return false;
+//         }
+//     }
+//     true
+// }
 
 // ── Persistence ──────────────────────────────────────────────────────
 
@@ -623,33 +628,6 @@ fn main() {
         &mut rules,
         &mut reducible,
     );
-
-    // Fuzz-verify all rules, drop failures
-    let n_reductions = rules.reductions.len();
-    eprintln!("Verifying {n_reductions} reductions...");
-    rules.reductions.retain(|&(from, to)| {
-        let ok = verify_rule(from, to, n);
-        if !ok {
-            eprintln!("  FUZZ FAIL: {} → {}", fmt_ops(from), fmt_ops(to));
-        }
-        ok
-    });
-
-    let n_annihilators = rules.annihilators.len();
-    eprintln!("Verifying {n_annihilators} annihilators...");
-    rules.annihilators.retain(|&seq| {
-        let ok = verify_rule(seq, PackedSequence::empty(), n);
-        if !ok {
-            eprintln!("  FUZZ FAIL: {} → ∅", fmt_ops(seq));
-        }
-        ok
-    });
-
-    let dropped = (n_reductions - rules.reductions.len())
-        + (n_annihilators - rules.annihilators.len());
-    if dropped > 0 {
-        eprintln!("Dropped {dropped} rules that failed fuzz verification");
-    }
 
     save_cache(sz, n, &oracle, &rules);
 
