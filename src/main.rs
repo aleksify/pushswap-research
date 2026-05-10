@@ -10,17 +10,20 @@ use std::thread;
 struct Config {
     algo: Option<Algorithm>,
     bench: bool,
+    no_opt: bool,
     values: Vec<i32>,
 }
 
 fn parse_args() -> Config {
     let mut algo: Option<Algorithm> = None;
     let mut bench = false;
+    let mut no_opt = false;
     let mut value_args = Vec::new();
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
             "--bench" => bench = true,
+            "--no-opt" => no_opt = true,
             other if other.starts_with("--") => {
                 let flag = &other[2..];
                 match Algorithm::from_name(flag) {
@@ -33,7 +36,7 @@ fn parse_args() -> Config {
                     }
                     None => {
                         let names: Vec<_> = Algorithm::ALL.iter().map(|a| a.name()).collect();
-                        eprintln!("Error: Unknown flag '{other}'. Available: {}, bench", names.join(", "));
+                        eprintln!("Error: Unknown flag '{other}'. Available: {}, bench, no-opt", names.join(", "));
                         process::exit(1);
                     }
                 }
@@ -47,7 +50,7 @@ fn parse_args() -> Config {
         process::exit(1);
     });
 
-    Config { algo, bench, values }
+    Config { algo, bench, no_opt, values }
 }
 
 fn main() {
@@ -62,8 +65,9 @@ fn main() {
 
     if let Some(algo) = config.algo {
         algo.sort()(&mut stacks);
-        let optimized = optimizer::optimize(stacks.logs().to_vec());
-        stacks.set_logs(optimized);
+        if !config.no_opt {
+            stacks.set_logs(optimizer::optimize(stacks.logs().to_vec()));
+        }
 
         for log in stacks.logs() {
             if let Log::Execute(op) = log {
@@ -75,14 +79,16 @@ fn main() {
             bench(&stacks, disorder(&ranked), &algo.to_string());
         }
     } else {
+        let no_opt = config.no_opt;
         let handles: Vec<_> = Algorithm::ALL
             .iter()
             .map(|&algo| {
                 let mut s = stacks.clone();
                 thread::spawn(move || {
                     algo.sort()(&mut s);
-                    let optimized = optimizer::optimize(s.logs().to_vec());
-                    s.set_logs(optimized);
+                    if !no_opt {
+                        s.set_logs(optimizer::optimize(s.logs().to_vec()));
+                    }
                     (s, algo)
                 })
             })
