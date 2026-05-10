@@ -53,7 +53,7 @@ pub fn bench(stacks: &stacks::StackPair, disorder: f64, strategy: &str) {
 
     eprintln!("[bench] disorder:   {:.2}%", disorder * 100.0);
     eprintln!("[bench] strategy:   {strategy}");
-    eprintln!("[bench] total_ops:  {total}");
+    eprintln!("[bench] total_ops:  {total}({})", stacks.total_ops());
     eprintln!("[bench] sa: {sa}  sb: {sb}  ss: {ss}  pa: {pa}  pb: {pb}");
     eprintln!("[bench] ra: {ra}  rb: {rb}  rr: {rr}  rra: {rra}  rrb: {rrb}  rrr: {rrr}");
 }

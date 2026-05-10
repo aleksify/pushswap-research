@@ -162,19 +162,19 @@ impl StackPair {
         &self.b
     }
 
-    pub fn logs(&self) -> &[Log] {
-        &self.logs
-    }
-
-    pub fn op_count(&self) -> usize {
-        self.logs.len()
-    }
-
     pub fn is_sorted(&self) -> bool {
         self.b.is_empty() && self.a.iter().is_sorted()
     }
 
-    pub fn op_count_opt(&self) -> usize {
+    pub fn logs(&self) -> &[Log] {
+        &self.logs
+    }
+
+    pub fn total_ops(&self) -> usize {
+        self.logs.len()
+    }
+
+    pub fn total_ops_opt(&self) -> usize {
         self.logs
             .iter()
             .filter(|l| matches!(l, Log::Execute(_)))
