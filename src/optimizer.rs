@@ -66,7 +66,7 @@ fn is_barrier(op: Operation) -> bool {
 /// Normalization: within blocks between barriers, reorder so all A-ops
 /// come before B-ops. This exposes adjacent same-stack ops for the
 /// peephole pass to cancel or merge.
-fn pass_normalize(ops: &mut Vec<Operation>) -> bool {
+fn pass_normalize(ops: &mut [Operation]) -> bool {
     let mut changed = false;
     let mut i = 0;
 
@@ -128,16 +128,16 @@ fn pass_peephole(ops: &mut Vec<Operation>) -> bool {
         let max_w = ruleset.max_len.min(ops.len() - i);
         for window_len in (2..=max_w).rev() {
             let window = &ops[i..i + window_len];
-            if let Some(rules_for_len) = ruleset.by_len.get(&window_len) {
-                if let Some(replacement) = rules_for_len.get(window) {
-                    let replacement = replacement.clone();
-                    ops.splice(i..i + window_len, replacement);
-                    // Step back to catch cascading reductions
-                    i = i.saturating_sub(ruleset.max_len);
-                    changed = true;
-                    matched = true;
-                    break;
-                }
+            if let Some(rules_for_len) = ruleset.by_len.get(&window_len)
+                && let Some(replacement) = rules_for_len.get(window)
+            {
+                let replacement = replacement.clone();
+                ops.splice(i..i + window_len, replacement);
+                // Step back to catch cascading reductions
+                i = i.saturating_sub(ruleset.max_len);
+                changed = true;
+                matched = true;
+                break;
             }
         }
 
