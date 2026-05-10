@@ -631,5 +631,13 @@ fn main() {
 
     save_cache(sz, n, &oracle, &rules);
 
-    print_rules(&rules);
+    if n <= 4 {
+        print_rules(&rules);
+    } else {
+        eprintln!(
+            "Done. {} reductions, {} annihilators. Saved to {CACHE_FILE}.",
+            rules.reductions.len(),
+            rules.annihilators.len()
+        );
+    }
 }
