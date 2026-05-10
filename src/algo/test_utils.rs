@@ -22,11 +22,9 @@ fn permute(vals: &mut Vec<usize>, start: usize, result: &mut Vec<Vec<usize>>) {
 }
 
 pub fn assert_sorts(input: &[usize], sort_fn: fn(&mut StackPair)) {
-    let expected: Vec<usize> = (0..input.len()).collect();
     let mut stacks = StackPair::new(input.to_vec());
     sort_fn(&mut stacks);
-    let result: Vec<usize> = stacks.a().iter().copied().collect();
-    assert_eq!(result, expected, "failed for {:?}", input);
+    assert!(stacks.is_sorted(), "failed for {:?}", input);
 }
 
 /// Test sort_fn on all permutations from min_n..=max_n.

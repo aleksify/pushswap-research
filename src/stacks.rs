@@ -170,6 +170,10 @@ impl StackPair {
         self.logs.len()
     }
 
+    pub fn is_sorted(&self) -> bool {
+        self.b.is_empty() && self.a.iter().is_sorted()
+    }
+
     pub fn op_count_opt(&self) -> usize {
         self.logs
             .iter()

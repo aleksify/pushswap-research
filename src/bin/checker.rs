@@ -35,7 +35,7 @@ fn main() {
         stacks.execute(op);
     }
 
-    if stacks.b().is_empty() && stacks.a().iter().is_sorted() {
+    if stacks.is_sorted() {
         println!("OK");
     } else {
         println!("KO");
