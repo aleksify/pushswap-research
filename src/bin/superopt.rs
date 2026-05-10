@@ -92,89 +92,100 @@ impl Rules {
 
 // ── Search ────────────────────────────────────────────────────────────
 
-/// Run one depth level: enumerate all sequences of `depth` operations,
-/// compare each result against the oracle, and collect new rules.
-/// New reducible patterns are buffered and added after the full depth
-/// completes (rules from depth K prune depth K+1, not K itself).
-fn search_depth(
-    depth: usize,
+/// Rebuild the BFS frontier from the oracle when resuming from cache.
+/// Frontier = all oracle entries at `depth`, with StackPairs reconstructed
+/// by replaying ops from canonical state.
+fn rebuild_frontier(
+    oracle: &HashMap<State, Vec<Operation>>,
     canonical: &StackPair,
+    depth: usize,
+) -> Vec<(StackPair, Vec<Operation>)> {
+    oracle
+        .values()
+        .filter(|ops| ops.len() == depth)
+        .map(|ops| {
+            let mut sp = canonical.clone();
+            for &op in ops {
+                sp.execute(op);
+            }
+            sp.set_logs(vec![]);
+            (sp, ops.clone())
+        })
+        .collect()
+}
+
+/// BFS search from `start_depth` through `max_depth`.
+/// Expands frontier level by level, discovering reduction rules and
+/// populating the oracle. Saves cache after each depth.
+fn search_bfs(
+    max_depth: usize,
+    start_depth: usize,
+    canonical: &StackPair,
+    n: usize,
     oracle: &mut HashMap<State, Vec<Operation>>,
     rules: &mut Rules,
     reducible: &mut ReducibleSet,
 ) {
-    let mut current_ops: Vec<Operation> = Vec::with_capacity(depth);
-    let mut new_reducible: Vec<Vec<Operation>> = Vec::new();
+    // Build frontier: states from previous depth level
+    let mut frontier = if start_depth == 1 {
+        vec![(canonical.clone(), vec![])]
+    } else {
+        rebuild_frontier(oracle, canonical, start_depth - 1)
+    };
 
-    enumerate(
-        canonical,
-        depth,
-        &mut current_ops,
-        oracle,
-        rules,
-        reducible,
-        &mut new_reducible,
-    );
+    for depth in start_depth..=max_depth {
+        let reds_before = rules.reductions.len() + rules.annihilators.len();
+        eprintln!(
+            "Depth {depth}: searching (oracle size: {}, frontier: {})...",
+            oracle.len(),
+            frontier.len()
+        );
 
-    for pattern in new_reducible {
-        reducible.add(&pattern);
-    }
-}
+        let mut next_frontier = Vec::new();
+        let mut new_reducible: Vec<Vec<Operation>> = Vec::new();
 
-/// Recursive sequence builder. At each level, clones the parent StackPair
-/// and applies one more operation — avoids replaying from scratch.
-/// Pruning happens before cloning: if the current suffix matches a known
-/// reducible pattern, the branch is skipped entirely.
-fn enumerate(
-    sp: &StackPair,
-    target_depth: usize,
-    current_ops: &mut Vec<Operation>,
-    oracle: &mut HashMap<State, Vec<Operation>>,
-    rules: &mut Rules,
-    reducible: &ReducibleSet,
-    new_reducible: &mut Vec<Vec<Operation>>,
-) {
-    if current_ops.len() == target_depth {
-        let state = get_state(sp);
+        for (sp, ops) in &frontier {
+            for &op in &Operation::ALL {
+                let mut new_ops = ops.clone();
+                new_ops.push(op);
 
-        if let Some(existing) = oracle.get(&state) {
-            if existing.len() < current_ops.len() {
-                // Strict reduction found
-                if existing.is_empty() {
-                    rules.annihilators.push(current_ops.clone());
-                } else {
-                    rules
-                        .reductions
-                        .push((current_ops.clone(), existing.clone()));
+                if reducible.has_reducible_suffix(&new_ops) {
+                    continue;
                 }
-                new_reducible.push(current_ops.clone());
+
+                let mut sp_new = sp.clone();
+                sp_new.execute(op);
+                sp_new.set_logs(vec![]);
+                let state = get_state(&sp_new);
+
+                if let Some(existing) = oracle.get(&state) {
+                    if existing.len() < new_ops.len() {
+                        if existing.is_empty() {
+                            rules.annihilators.push(new_ops.clone());
+                        } else {
+                            rules.reductions.push((new_ops.clone(), existing.clone()));
+                        }
+                        new_reducible.push(new_ops);
+                    }
+                } else {
+                    oracle.insert(state, new_ops.clone());
+                    next_frontier.push((sp_new, new_ops));
+                }
             }
-        } else {
-            oracle.insert(state, current_ops.clone());
-        }
-        return;
-    }
-
-    for &op in &Operation::ALL {
-        current_ops.push(op);
-
-        if !reducible.has_reducible_suffix(current_ops) {
-            let mut sp_clone = sp.clone();
-            sp_clone.execute(op);
-            sp_clone.set_logs(vec![]);
-
-            enumerate(
-                &sp_clone,
-                target_depth,
-                current_ops,
-                oracle,
-                rules,
-                reducible,
-                new_reducible,
-            );
         }
 
-        current_ops.pop();
+        for pattern in new_reducible {
+            reducible.add(&pattern);
+        }
+
+        let new_reds = (rules.reductions.len() + rules.annihilators.len()) - reds_before;
+        eprintln!(
+            "Depth {depth}: done. +{new_reds} reductions, oracle size: {}",
+            oracle.len()
+        );
+
+        save_cache(stack_size(n), depth, oracle, rules);
+        frontier = next_frontier;
     }
 }
 
@@ -410,23 +421,15 @@ fn main() {
 
     let canonical = canonical_state(n);
 
-    for depth in start_depth..=n {
-        let reds_before = rules.reductions.len() + rules.annihilators.len();
-        eprintln!(
-            "Depth {depth}: searching (oracle size: {})...",
-            oracle.len()
-        );
-
-        search_depth(depth, &canonical, &mut oracle, &mut rules, &mut reducible);
-
-        let new_reds = (rules.reductions.len() + rules.annihilators.len()) - reds_before;
-        eprintln!(
-            "Depth {depth}: done. +{new_reds} reductions, oracle size: {}",
-            oracle.len()
-        );
-
-        save_cache(sz, depth, &oracle, &rules);
-    }
+    search_bfs(
+        n,
+        start_depth,
+        &canonical,
+        n,
+        &mut oracle,
+        &mut rules,
+        &mut reducible,
+    );
 
     // Fuzz-verify all rules, drop failures
     eprintln!("Verifying {} reductions...", rules.reductions.len());
