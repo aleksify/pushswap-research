@@ -79,7 +79,6 @@ impl ReducibleSet {
 struct Rules {
     reductions: Vec<(Vec<Operation>, Vec<Operation>)>,
     annihilators: Vec<Vec<Operation>>,
-    equivalences: Vec<(Vec<Operation>, Vec<Operation>)>,
 }
 
 impl Rules {
@@ -87,7 +86,6 @@ impl Rules {
         Self {
             reductions: Vec::new(),
             annihilators: Vec::new(),
-            equivalences: Vec::new(),
         }
     }
 }
@@ -150,11 +148,6 @@ fn enumerate(
                         .push((current_ops.clone(), existing.clone()));
                 }
                 new_reducible.push(current_ops.clone());
-            } else if existing.len() == current_ops.len() && *existing != *current_ops {
-                // Same-length equivalence. Existing is canonical (enumerated first).
-                rules
-                    .equivalences
-                    .push((existing.clone(), current_ops.clone()));
             }
         } else {
             oracle.insert(state, current_ops.clone());
@@ -256,7 +249,6 @@ struct CacheData {
     oracle: Vec<OracleEntry>,
     reductions: Vec<(Vec<String>, Vec<String>)>,
     annihilators: Vec<Vec<String>>,
-    equivalences: Vec<(Vec<String>, Vec<String>)>,
 }
 
 fn ops_to_strings(ops: &[Operation]) -> Vec<String> {
@@ -299,11 +291,6 @@ fn save_cache(
             .iter()
             .map(|seq| ops_to_strings(seq))
             .collect(),
-        equivalences: rules
-            .equivalences
-            .iter()
-            .map(|(canon, equiv)| (ops_to_strings(canon), ops_to_strings(equiv)))
-            .collect(),
     };
 
     let json = serde_json::to_string(&data).expect("failed to serialize cache");
@@ -335,11 +322,6 @@ fn rebuild_from_cache(
     }
     for seq in &cache.annihilators {
         rules.annihilators.push(strings_to_ops(seq));
-    }
-    for (canon, equiv) in &cache.equivalences {
-        rules
-            .equivalences
-            .push((strings_to_ops(canon), strings_to_ops(equiv)));
     }
 
     // Rebuild reducible set from known reductions + annihilators
@@ -378,12 +360,6 @@ fn print_rules(rules: &Rules) {
         println!("| {} |", fmt_ops(seq));
     }
 
-    println!("\n## Equivalences (same length)\n");
-    println!("| Canonical | Equivalent |");
-    println!("|-----------|------------|");
-    for (canon, equiv) in &rules.equivalences {
-        println!("| {} | {} |", fmt_ops(canon), fmt_ops(equiv));
-    }
 }
 
 // ── Main ──────────────────────────────────────────────────────────────
@@ -436,7 +412,6 @@ fn main() {
 
     for depth in start_depth..=n {
         let reds_before = rules.reductions.len() + rules.annihilators.len();
-        let equivs_before = rules.equivalences.len();
         eprintln!(
             "Depth {depth}: searching (oracle size: {})...",
             oracle.len()
@@ -445,9 +420,8 @@ fn main() {
         search_depth(depth, &canonical, &mut oracle, &mut rules, &mut reducible);
 
         let new_reds = (rules.reductions.len() + rules.annihilators.len()) - reds_before;
-        let new_equivs = rules.equivalences.len() - equivs_before;
         eprintln!(
-            "Depth {depth}: done. +{new_reds} reductions, +{new_equivs} equivalences, oracle size: {}",
+            "Depth {depth}: done. +{new_reds} reductions, oracle size: {}",
             oracle.len()
         );
 
@@ -464,11 +438,6 @@ fn main() {
     rules
         .annihilators
         .retain(|seq| verify_rule(seq, &[], n));
-
-    eprintln!("Verifying {} equivalences...", rules.equivalences.len());
-    rules
-        .equivalences
-        .retain(|(canon, equiv)| verify_rule(canon, equiv, n));
 
     // Save verified rules
     save_cache(sz, n, &oracle, &rules);
