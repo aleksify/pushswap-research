@@ -1,7 +1,12 @@
 macro_rules! sort_name {
     () => {
         pub fn name() -> &'static str {
-            module_path!().rsplit("::").next().unwrap().strip_prefix("sort_").unwrap()
+            module_path!()
+                .rsplit("::")
+                .next()
+                .unwrap()
+                .strip_prefix("sort_")
+                .unwrap()
         }
     };
 }

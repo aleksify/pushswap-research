@@ -26,7 +26,11 @@ pub fn bench_all(results: &[(stacks::StackPair, algo::Algorithm)], disorder: f64
     for (i, (s, algo)) in results.iter().enumerate() {
         let prefix = if i == 0 { "*" } else { "" };
         let label = format!("{prefix}{}:", algo);
-        eprintln!("[bench] {label:<w$}{}({})", s.total_ops_opt(), s.total_ops());
+        eprintln!(
+            "[bench] {label:<w$}{}({})",
+            s.total_ops_opt(),
+            s.total_ops()
+        );
     }
 }
 

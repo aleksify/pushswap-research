@@ -13,19 +13,11 @@ pub trait StackExt {
 
 impl StackExt for VecDeque<usize> {
     fn min_pos(&self) -> usize {
-        self.iter()
-            .enumerate()
-            .min_by_key(|&(_, v)| v)
-            .unwrap()
-            .0
+        self.iter().enumerate().min_by_key(|&(_, v)| v).unwrap().0
     }
 
     fn max_pos(&self) -> usize {
-        self.iter()
-            .enumerate()
-            .max_by_key(|&(_, v)| v)
-            .unwrap()
-            .0
+        self.iter().enumerate().max_by_key(|&(_, v)| v).unwrap().0
     }
 
     fn min_above_pos(&self, val: usize) -> usize {

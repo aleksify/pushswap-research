@@ -4,48 +4,58 @@ use Operation::*;
 /// Tier 1 — adjacent pairs that cancel to nothing.
 ///    a     b
 const CANCELLATIONS: &[(Operation, Operation)] = &[
-    (Sa,  Sa ),
-    (Sb,  Sb ),
-    (Ss,  Ss ),
-    (Pa,  Pb ),  (Pb,  Pa ),
-    (Ra,  Rra),  (Rra, Ra ),
-    (Rb,  Rrb),  (Rrb, Rb ),
-    (Rr,  Rrr),  (Rrr, Rr ),
+    (Sa, Sa),
+    (Sb, Sb),
+    (Ss, Ss),
+    (Pa, Pb),
+    (Pb, Pa),
+    (Ra, Rra),
+    (Rra, Ra),
+    (Rb, Rrb),
+    (Rrb, Rb),
+    (Rr, Rrr),
+    (Rrr, Rr),
 ];
 
 /// Tiers 2+3 — adjacent pairs that rewrite to a single op.
 ///    a     b      result
 const PAIR_REWRITES: &[(Operation, Operation, Operation)] = &[
     // Tier 2: merge A-only + B-only → combined
-    (Sa,  Sb,  Ss ),  (Sb,  Sa,  Ss ),
-    (Ra,  Rb,  Rr ),  (Rb,  Ra,  Rr ),
-    (Rra, Rrb, Rrr),  (Rrb, Rra, Rrr),
+    (Sa, Sb, Ss),
+    (Sb, Sa, Ss),
+    (Ra, Rb, Rr),
+    (Rb, Ra, Rr),
+    (Rra, Rrb, Rrr),
+    (Rrb, Rra, Rrr),
     // Tier 3: combined + half → other half
-    (Ss,  Sa,  Sb ),  (Sa,  Ss,  Sb ),
-    (Ss,  Sb,  Sa ),  (Sb,  Ss,  Sa ),
-    (Rr,  Rra, Rb ),  (Rra, Rr,  Rb ),
-    (Rr,  Rrb, Ra ),  (Rrb, Rr,  Ra ),
-    (Rrr, Ra,  Rrb),  (Ra,  Rrr, Rrb),
-    (Rrr, Rb,  Rra),  (Rb,  Rrr, Rra),
+    (Ss, Sa, Sb),
+    (Sa, Ss, Sb),
+    (Ss, Sb, Sa),
+    (Sb, Ss, Sa),
+    (Rr, Rra, Rb),
+    (Rra, Rr, Rb),
+    (Rr, Rrb, Ra),
+    (Rrb, Rr, Ra),
+    (Rrr, Ra, Rrb),
+    (Ra, Rrr, Rrb),
+    (Rrr, Rb, Rra),
+    (Rb, Rrr, Rra),
 ];
 
 /// Tier 5 — triples that rewrite to pairs.
 ///    a    b    c          r1   r2
 type Triple = ((Operation, Operation, Operation), (Operation, Operation));
 const TRIPLE_REWRITES: &[Triple] = &[
-    ((Ra, Pb, Rra),  (Sa, Pb)),
-    ((Rb, Pa, Rrb),  (Sb, Pa)),
-    ((Ra, Pa, Rra),  (Pa, Sa)),
-    ((Rb, Pb, Rrb),  (Pb, Sb)),
+    ((Ra, Pb, Rra), (Sa, Pb)),
+    ((Rb, Pa, Rrb), (Sb, Pa)),
+    ((Ra, Pa, Rra), (Pa, Sa)),
+    ((Rb, Pb, Rrb), (Pb, Sb)),
 ];
 
 /// Tier 4 — which A/B op pairs can be zipped into combined ops.
 ///    a     b      combined
-const MERGE_PAIRS: &[(Operation, Operation, Operation)] = &[
-    (Sa,  Sb,  Ss ),
-    (Ra,  Rb,  Rr ),
-    (Rra, Rrb, Rrr),
-];
+const MERGE_PAIRS: &[(Operation, Operation, Operation)] =
+    &[(Sa, Sb, Ss), (Ra, Rb, Rr), (Rra, Rrb, Rrr)];
 
 // ====================================================================
 // Rule lookups
@@ -62,11 +72,7 @@ fn pair_rewrite(a: Operation, b: Operation) -> Option<Operation> {
         .map(|&(_, _, result)| result)
 }
 
-fn triple_rewrite(
-    a: Operation,
-    b: Operation,
-    c: Operation,
-) -> Option<(Operation, Operation)> {
+fn triple_rewrite(a: Operation, b: Operation, c: Operation) -> Option<(Operation, Operation)> {
     TRIPLE_REWRITES
         .iter()
         .find(|&&((x, y, z), _)| x == a && y == b && z == c)
@@ -98,7 +104,9 @@ fn next_exec(logs: &[Log], from: usize) -> Option<usize> {
 }
 
 fn prev_exec(logs: &[Log], before: usize) -> Option<usize> {
-    (0..before).rev().find(|&i| matches!(logs[i], Log::Execute(_)))
+    (0..before)
+        .rev()
+        .find(|&i| matches!(logs[i], Log::Execute(_)))
 }
 
 fn op_at(logs: &[Log], idx: usize) -> Operation {

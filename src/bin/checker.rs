@@ -1,5 +1,5 @@
-use push_swap_rs::{parse_values, process_and_rank};
-use push_swap_rs::stacks::{Operation, StackPair};
+use push_swap::stacks::{Operation, StackPair};
+use push_swap::{parse_values, process_and_rank};
 use std::io::{self, BufRead};
 use std::{env, process};
 

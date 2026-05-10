@@ -1,7 +1,7 @@
-use push_swap_rs::algo::Algorithm;
-use push_swap_rs::optimizer;
-use push_swap_rs::{bench, bench_all, disorder, parse_values, process_and_rank};
-use push_swap_rs::stacks::{Log, StackPair};
+use push_swap::algo::Algorithm;
+use push_swap::optimizer;
+use push_swap::stacks::{Log, StackPair};
+use push_swap::{bench, bench_all, disorder, parse_values, process_and_rank};
 use std::env;
 use std::process;
 use std::thread;
@@ -36,7 +36,10 @@ fn parse_args() -> Config {
                     }
                     None => {
                         let names: Vec<_> = Algorithm::ALL.iter().map(|a| a.name()).collect();
-                        eprintln!("Error: Unknown flag '{other}'. Available: {}, bench, no-opt", names.join(", "));
+                        eprintln!(
+                            "Error: Unknown flag '{other}'. Available: {}, bench, no-opt",
+                            names.join(", ")
+                        );
                         process::exit(1);
                     }
                 }
@@ -50,7 +53,12 @@ fn parse_args() -> Config {
         process::exit(1);
     });
 
-    Config { algo, bench, no_opt, values }
+    Config {
+        algo,
+        bench,
+        no_opt,
+        values,
+    }
 }
 
 fn main() {
@@ -94,10 +102,7 @@ fn main() {
             })
             .collect();
 
-        let mut results: Vec<_> = handles
-            .into_iter()
-            .map(|h| h.join().unwrap())
-            .collect();
+        let mut results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 
         results.sort_by_key(|(s, _)| s.total_ops_opt());
         let (best_stacks, _) = &results[0];
