@@ -3,6 +3,7 @@ use push_swap_rs::{bench, disorder, parse_values, process_and_rank};
 use push_swap_rs::stacks::{Log, StackPair};
 use std::env;
 use std::process;
+use std::thread;
 
 #[derive(Debug)]
 struct Config {
@@ -56,24 +57,29 @@ fn main() {
         process::exit(1);
     });
 
-    let n = ranked.len();
     let mut stacks = StackPair::new(ranked.clone());
 
-    let d = disorder(&ranked);
+    let (stacks, algo) = if let Some(algo) = config.algo {
+        algo.sort()(&mut stacks);
+        (stacks, algo)
+    } else {
+        let handles: Vec<_> = Algorithm::ALL
+            .iter()
+            .map(|&algo| {
+                let mut s = stacks.clone();
+                thread::spawn(move || {
+                    algo.sort()(&mut s);
+                    (s, algo)
+                })
+            })
+            .collect();
 
-    let algo = config.algo.unwrap_or({
-        if n <= 5 {
-            Algorithm::Selection
-        } else if d < 0.2 {
-            Algorithm::Insertion
-        } else if d < 0.5 {
-            Algorithm::KSort
-        } else {
-            Algorithm::Turk
-        }
-    });
-
-    algo.sort()(&mut stacks);
+        handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .min_by_key(|(s, _)| s.total_ops_opt())
+            .unwrap()
+    };
 
     for log in stacks.logs() {
         if let Log::Execute(op) = log {
@@ -82,6 +88,6 @@ fn main() {
     }
 
     if config.bench {
-        bench(&stacks, d, &algo.to_string());
+        bench(&stacks, disorder(&ranked), &algo.to_string());
     }
 }
