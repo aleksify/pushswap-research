@@ -27,7 +27,10 @@ fn parse_ops(strings: &[String]) -> Vec<Operation> {
 
 static RULESET: LazyLock<RuleSet> = LazyLock::new(|| {
     let json = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/superopt_cache.json"));
-    let cache: CacheData = serde_json::from_str(json).expect("invalid superopt_cache.json");
+    let cache: CacheData = match serde_json::from_str(json) {
+        Ok(c) => c,
+        Err(_) => return RuleSet { by_len: HashMap::new(), max_len: 0 },
+    };
 
     let mut max_len = 0;
     let mut by_len: HashMap<usize, HashMap<Vec<Operation>, Vec<Operation>>> = HashMap::new();

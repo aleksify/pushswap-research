@@ -36,6 +36,9 @@ release: ## Build the project in release mode (optimized)  and copy to root
 superopt: ## Build and run the superopt binary in release mode, use: make superopt N=5
 	$(CARGO) run --bin superopt --release -- $(N)
 
+clean-cache: ## Replace the current superopt cache with an empty file
+	echo "{}" > superopt_cache.json
+
 help: ## Print this help message
 	@echo "Usage: make [target]"
 	@echo ""
