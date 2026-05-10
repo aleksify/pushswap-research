@@ -1,7 +1,81 @@
 use crate::stacks::{Log, Operation};
 use Operation::*;
 
-// ---- Operation classification ----
+/// Tier 1 — adjacent pairs that cancel to nothing.
+///    a     b
+const CANCELLATIONS: &[(Operation, Operation)] = &[
+    (Sa,  Sa ),
+    (Sb,  Sb ),
+    (Ss,  Ss ),
+    (Pa,  Pb ),  (Pb,  Pa ),
+    (Ra,  Rra),  (Rra, Ra ),
+    (Rb,  Rrb),  (Rrb, Rb ),
+    (Rr,  Rrr),  (Rrr, Rr ),
+];
+
+/// Tiers 2+3 — adjacent pairs that rewrite to a single op.
+///    a     b      result
+const PAIR_REWRITES: &[(Operation, Operation, Operation)] = &[
+    // Tier 2: merge A-only + B-only → combined
+    (Sa,  Sb,  Ss ),  (Sb,  Sa,  Ss ),
+    (Ra,  Rb,  Rr ),  (Rb,  Ra,  Rr ),
+    (Rra, Rrb, Rrr),  (Rrb, Rra, Rrr),
+    // Tier 3: combined + half → other half
+    (Ss,  Sa,  Sb ),  (Sa,  Ss,  Sb ),
+    (Ss,  Sb,  Sa ),  (Sb,  Ss,  Sa ),
+    (Rr,  Rra, Rb ),  (Rra, Rr,  Rb ),
+    (Rr,  Rrb, Ra ),  (Rrb, Rr,  Ra ),
+    (Rrr, Ra,  Rrb),  (Ra,  Rrr, Rrb),
+    (Rrr, Rb,  Rra),  (Rb,  Rrr, Rra),
+];
+
+/// Tier 5 — triples that rewrite to pairs.
+///    a    b    c          r1   r2
+type Triple = ((Operation, Operation, Operation), (Operation, Operation));
+const TRIPLE_REWRITES: &[Triple] = &[
+    ((Ra, Pb, Rra),  (Sa, Pb)),
+    ((Rb, Pa, Rrb),  (Sb, Pa)),
+    ((Ra, Pa, Rra),  (Pa, Sa)),
+    ((Rb, Pb, Rrb),  (Pb, Sb)),
+];
+
+/// Tier 4 — which A/B op pairs can be zipped into combined ops.
+///    a     b      combined
+const MERGE_PAIRS: &[(Operation, Operation, Operation)] = &[
+    (Sa,  Sb,  Ss ),
+    (Ra,  Rb,  Rr ),
+    (Rra, Rrb, Rrr),
+];
+
+// ====================================================================
+// Rule lookups
+// ====================================================================
+
+fn cancels(a: Operation, b: Operation) -> bool {
+    CANCELLATIONS.iter().any(|&(x, y)| x == a && y == b)
+}
+
+fn pair_rewrite(a: Operation, b: Operation) -> Option<Operation> {
+    PAIR_REWRITES
+        .iter()
+        .find(|&&(x, y, _)| x == a && y == b)
+        .map(|&(_, _, result)| result)
+}
+
+fn triple_rewrite(
+    a: Operation,
+    b: Operation,
+    c: Operation,
+) -> Option<(Operation, Operation)> {
+    TRIPLE_REWRITES
+        .iter()
+        .find(|&&((x, y, z), _)| x == a && y == b && z == c)
+        .map(|&(_, result)| result)
+}
+
+// ====================================================================
+// Operation classification
+// ====================================================================
 
 fn is_a_only(op: Operation) -> bool {
     matches!(op, Sa | Ra | Rra)
@@ -12,13 +86,12 @@ fn is_b_only(op: Operation) -> bool {
 }
 
 fn is_barrier(op: Operation) -> bool {
-    matches!(
-        op,
-        Ss | Rr | Rrr | Pa | Pb
-    )
+    matches!(op, Ss | Rr | Rrr | Pa | Pb)
 }
 
-// ---- Navigation helpers ----
+// ====================================================================
+// Navigation helpers
+// ====================================================================
 
 fn next_exec(logs: &[Log], from: usize) -> Option<usize> {
     (from..logs.len()).find(|&i| matches!(logs[i], Log::Execute(_)))
@@ -34,67 +107,9 @@ fn op_at(logs: &[Log], idx: usize) -> Operation {
     }
 }
 
-// ---- Tier 1: Adjacent cancellation (length-2 → 0) ----
-
-fn tier1_cancel(a: Operation, b: Operation) -> bool {
-
-    matches!(
-        (a, b),
-        (Sa, Sa)
-            | (Sb, Sb)
-            | (Ss, Ss)
-            | (Pa, Pb)
-            | (Pb, Pa)
-            | (Ra, Rra)
-            | (Rra, Ra)
-            | (Rb, Rrb)
-            | (Rrb, Rb)
-            | (Rr, Rrr)
-            | (Rrr, Rr)
-    )
-}
-
-// ---- Tier 2: Adjacent merge (length-2 → 1) ----
-
-fn tier2_merge(a: Operation, b: Operation) -> Option<Operation> {
-
-    match (a, b) {
-        (Sa, Sb) | (Sb, Sa) => Some(Ss),
-        (Ra, Rb) | (Rb, Ra) => Some(Rr),
-        (Rra, Rrb) | (Rrb, Rra) => Some(Rrr),
-        _ => None,
-    }
-}
-
-// ---- Tier 3: Decomposition rewrite (length-2 → 1) ----
-
-fn tier3_decompose(a: Operation, b: Operation) -> Option<Operation> {
-
-    match (a, b) {
-        (Ss, Sa) | (Sa, Ss) => Some(Sb),
-        (Ss, Sb) | (Sb, Ss) => Some(Sa),
-        (Rr, Rra) | (Rra, Rr) => Some(Rb),
-        (Rr, Rrb) | (Rrb, Rr) => Some(Ra),
-        (Rrr, Ra) | (Ra, Rrr) => Some(Rrb),
-        (Rrr, Rb) | (Rb, Rrr) => Some(Rra),
-        _ => None,
-    }
-}
-
-// ---- Tier 5: Length-3 algebraic rewrites (length-3 → 2) ----
-
-fn tier5_rewrite(a: Operation, b: Operation, c: Operation) -> Option<(Operation, Operation)> {
-
-    match (a, b, c) {
-        (Ra, Pb, Rra) => Some((Sa, Pb)),
-        (Rb, Pa, Rrb) => Some((Sb, Pa)),
-        (Ra, Pa, Rra) => Some((Pa, Sa)),
-        (Rb, Pb, Rrb) => Some((Pb, Sb)),
-        _ => None,
-    }
-}
-
-// ---- Tier 4 helpers ----
+// ====================================================================
+// Tier 4 helpers
+// ====================================================================
 
 /// Reduce a single-stack op subsequence by canceling adjacent inverse pairs.
 /// Uses a stack: push each op, pop if top cancels with incoming op.
@@ -102,7 +117,7 @@ fn reduce_pure(ops: &[Operation]) -> Vec<Operation> {
     let mut stack: Vec<Operation> = Vec::with_capacity(ops.len());
     for &op in ops {
         if let Some(&top) = stack.last()
-            && tier1_cancel(top, op)
+            && cancels(top, op)
         {
             stack.pop();
             continue;
@@ -115,37 +130,46 @@ fn reduce_pure(ops: &[Operation]) -> Vec<Operation> {
 /// Merge matching A/B op pairs into combined ops (Tier 2 zip).
 /// E.g. [ra,ra] + [rb,rb] → [rr,rr]; [ra,ra,ra] + [rb] → [rr,ra,ra].
 fn zip_tier2_merge(a_ops: &[Operation], b_ops: &[Operation]) -> Vec<Operation> {
-
-
-    let a_sa = a_ops.iter().filter(|&&op| op == Sa).count();
-    let a_ra = a_ops.iter().filter(|&&op| op == Ra).count();
-    let a_rra = a_ops.iter().filter(|&&op| op == Rra).count();
-
-    let b_sb = b_ops.iter().filter(|&&op| op == Sb).count();
-    let b_rb = b_ops.iter().filter(|&&op| op == Rb).count();
-    let b_rrb = b_ops.iter().filter(|&&op| op == Rrb).count();
-
-    let merge_ss = a_sa.min(b_sb);
-    let merge_rr = a_ra.min(b_rb);
-    let merge_rrr = a_rra.min(b_rrb);
-
     let mut result = Vec::new();
-    result.extend(std::iter::repeat_n(Ss, merge_ss));
-    result.extend(std::iter::repeat_n(Rr, merge_rr));
-    result.extend(std::iter::repeat_n(Rrr, merge_rrr));
-    result.extend(std::iter::repeat_n(Sa, a_sa - merge_ss));
-    result.extend(std::iter::repeat_n(Ra, a_ra - merge_rr));
-    result.extend(std::iter::repeat_n(Rra, a_rra - merge_rrr));
-    result.extend(std::iter::repeat_n(Sb, b_sb - merge_ss));
-    result.extend(std::iter::repeat_n(Rb, b_rb - merge_rr));
-    result.extend(std::iter::repeat_n(Rrb, b_rrb - merge_rrr));
+    let mut b_remaining: Vec<Operation> = b_ops.to_vec();
+
+    // For each merge rule, pair up matching A and B ops
+    for &(a_match, b_match, combined) in MERGE_PAIRS {
+        let a_count = a_ops.iter().filter(|&&op| op == a_match).count();
+        let b_count = b_remaining.iter().filter(|&&op| op == b_match).count();
+        let pairs = a_count.min(b_count);
+        result.extend(std::iter::repeat_n(combined, pairs));
+        // Remove paired B ops
+        let mut removed = 0;
+        b_remaining.retain(|&op| {
+            if op == b_match && removed < pairs {
+                removed += 1;
+                false
+            } else {
+                true
+            }
+        });
+    }
+
+    // Unpaired A ops
+    for &(a_match, b_match, _) in MERGE_PAIRS {
+        let a_count = a_ops.iter().filter(|&&op| op == a_match).count();
+        let b_count = b_ops.iter().filter(|&&op| op == b_match).count();
+        let pairs = a_count.min(b_count);
+        result.extend(std::iter::repeat_n(a_match, a_count - pairs));
+    }
+
+    // Unpaired B ops
+    result.extend(b_remaining);
 
     result
 }
 
-// ---- Pass: Tiers 1-3 (adjacent peephole) ----
+// ====================================================================
+// Passes
+// ====================================================================
 
-/// Scan adjacent active op pairs and apply Tier 1/2/3 rewrite rules.
+/// Tiers 1-3: scan adjacent active op pairs and apply rewrite rules.
 /// Steps back on rewrite to catch cascading reductions.
 fn pass_adjacent(logs: &mut [Log]) -> bool {
     let mut changed = false;
@@ -157,7 +181,7 @@ fn pass_adjacent(logs: &mut [Log]) -> bool {
         let a = op_at(logs, i);
         let b = op_at(logs, j);
 
-        if tier1_cancel(a, b) {
+        if cancels(a, b) {
             logs[i] = Log::Ignore(a);
             logs[j] = Log::Ignore(b);
             changed = true;
@@ -168,7 +192,7 @@ fn pass_adjacent(logs: &mut [Log]) -> bool {
                     None => break,
                 },
             }
-        } else if let Some(replacement) = tier2_merge(a, b).or_else(|| tier3_decompose(a, b)) {
+        } else if let Some(replacement) = pair_rewrite(a, b) {
             logs[i] = Log::Execute(replacement);
             logs[j] = Log::Ignore(b);
             changed = true;
@@ -183,11 +207,7 @@ fn pass_adjacent(logs: &mut [Log]) -> bool {
     changed
 }
 
-// ---- Pass: Tier 4 (commutativity-aware sliding window) ----
-
-/// Exploit A/B commutativity: within blocks between barriers,
-/// partition into A-only and B-only subsequences, reduce each,
-/// then merge matching pairs into combined ops.
+/// Tier 4: exploit A/B commutativity within blocks between barriers.
 fn pass_tier4(logs: &mut [Log]) -> bool {
     let mut changed = false;
 
@@ -199,7 +219,6 @@ fn pass_tier4(logs: &mut [Log]) -> bool {
         return false;
     }
 
-    // Split active indices into blocks at barriers
     let mut blocks: Vec<Vec<usize>> = Vec::new();
     let mut current_block: Vec<usize> = Vec::new();
 
@@ -236,7 +255,6 @@ fn pass_tier4(logs: &mut [Log]) -> bool {
         let b_reduced = reduce_pure(&b_ops);
         let merged = zip_tier2_merge(&a_reduced, &b_reduced);
 
-        // Write back and detect changes inline
         let mut block_changed = false;
         for (k, &new_op) in merged.iter().enumerate() {
             if op_at(logs, block_indices[k]) != new_op {
@@ -255,9 +273,7 @@ fn pass_tier4(logs: &mut [Log]) -> bool {
     changed
 }
 
-// ---- Pass: Tier 5 (length-3 algebraic rewrites) ----
-
-/// Scan windows of three active ops for rotation-around-push identities.
+/// Tier 5: scan windows of three active ops for rotation-around-push identities.
 fn pass_tier5(logs: &mut [Log]) -> bool {
     let mut changed = false;
     let Some(mut i) = next_exec(logs, 0) else {
@@ -273,7 +289,7 @@ fn pass_tier5(logs: &mut [Log]) -> bool {
         let b = op_at(logs, j);
         let c = op_at(logs, k);
 
-        if let Some((new1, new2)) = tier5_rewrite(a, b, c) {
+        if let Some((new1, new2)) = triple_rewrite(a, b, c) {
             logs[i] = Log::Execute(new1);
             logs[j] = Log::Execute(new2);
             logs[k] = Log::Ignore(c);
@@ -289,7 +305,9 @@ fn pass_tier5(logs: &mut [Log]) -> bool {
     changed
 }
 
-// ---- Main entry point ----
+// ====================================================================
+// Main entry point
+// ====================================================================
 
 /// Optimize a log sequence by replacing redundant ops with Ignore.
 /// Runs Tiers 1-5 in a fixed-point loop until no more rewrites fire.
@@ -312,8 +330,6 @@ mod tests {
     use crate::stacks::StackPair;
     use std::collections::VecDeque;
 
-
-    /// StackPair with 10 elements, 3 pushed to B — both stacks populated.
     fn make_stacks() -> StackPair {
         let mut s = StackPair::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
         s.execute(Pb);
@@ -377,68 +393,21 @@ mod tests {
 
     #[test]
     fn tier1_cancellations() {
-        let pairs: &[&[Operation]] = &[
-            &[Sa, Sa],
-            &[Sb, Sb],
-            &[Ss, Ss],
-            &[Pa, Pb],
-            &[Pb, Pa],
-            &[Ra, Rra],
-            &[Rra, Ra],
-            &[Rb, Rrb],
-            &[Rrb, Rb],
-            &[Rr, Rrr],
-            &[Rrr, Rr],
-        ];
-        for ops in pairs {
-            assert_identity(ops);
-            assert_optimizes_to(ops, &[]);
+        for &(a, b) in CANCELLATIONS {
+            assert_identity(&[a, b]);
+            assert_optimizes_to(&[a, b], &[]);
         }
     }
 
     // ================================================================
-    // Tier 2: A+B pairs equivalent to combined op, optimizer merges
+    // Tiers 2+3: pair rewrites equivalent, optimizer applies them
     // ================================================================
 
     #[test]
-    fn tier2_merges() {
-        let rules: &[(&[Operation], Operation)] = &[
-            (&[Sa, Sb], Ss),
-            (&[Sb, Sa], Ss),
-            (&[Ra, Rb], Rr),
-            (&[Rb, Ra], Rr),
-            (&[Rra, Rrb], Rrr),
-            (&[Rrb, Rra], Rrr),
-        ];
-        for &(input, expected) in rules {
-            assert_equivalent(input, &[expected]);
-            assert_optimizes_to(input, &[expected]);
-        }
-    }
-
-    // ================================================================
-    // Tier 3: combined + half → other half, optimizer decomposes
-    // ================================================================
-
-    #[test]
-    fn tier3_decompositions() {
-        let rules: &[(&[Operation], Operation)] = &[
-            (&[Ss, Sa], Sb),
-            (&[Sa, Ss], Sb),
-            (&[Ss, Sb], Sa),
-            (&[Sb, Ss], Sa),
-            (&[Rr, Rra], Rb),
-            (&[Rra, Rr], Rb),
-            (&[Rr, Rrb], Ra),
-            (&[Rrb, Rr], Ra),
-            (&[Rrr, Ra], Rrb),
-            (&[Ra, Rrr], Rrb),
-            (&[Rrr, Rb], Rra),
-            (&[Rb, Rrr], Rra),
-        ];
-        for &(input, expected) in rules {
-            assert_equivalent(input, &[expected]);
-            assert_optimizes_to(input, &[expected]);
+    fn tier2_and_tier3_pair_rewrites() {
+        for &(a, b, result) in PAIR_REWRITES {
+            assert_equivalent(&[a, b], &[result]);
+            assert_optimizes_to(&[a, b], &[result]);
         }
     }
 
@@ -454,7 +423,6 @@ mod tests {
 
     #[test]
     fn tier4_merge_across_commuting() {
-        // A=[ra], B=[sb,rb]. Merge ra+rb → rr. Left: sb.
         let result = optimize(make_logs(&[Ra, Sb, Rb]));
         assert_eq!(exec_ops(&result).len(), 2);
     }
@@ -475,15 +443,9 @@ mod tests {
 
     #[test]
     fn tier5_rewrites() {
-        let rules: &[(&[Operation], &[Operation])] = &[
-            (&[Ra, Pb, Rra], &[Sa, Pb]),
-            (&[Rb, Pa, Rrb], &[Sb, Pa]),
-            (&[Ra, Pa, Rra], &[Pa, Sa]),
-            (&[Rb, Pb, Rrb], &[Pb, Sb]),
-        ];
-        for &(input, expected) in rules {
-            assert_equivalent(input, expected);
-            assert_optimizes_to(input, expected);
+        for &((a, b, c), (r1, r2)) in TRIPLE_REWRITES {
+            assert_equivalent(&[a, b, c], &[r1, r2]);
+            assert_optimizes_to(&[a, b, c], &[r1, r2]);
         }
     }
 
@@ -493,7 +455,6 @@ mod tests {
 
     #[test]
     fn cascade_merge_then_decompose() {
-        // ra rb rra → merge(ra+rb)=rr, then tier3(rr+rra)=rb
         assert_equivalent(&[Ra, Rb, Rra], &[Rb]);
         assert_optimizes_to(&[Ra, Rb, Rra], &[Rb]);
     }
