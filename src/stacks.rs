@@ -47,7 +47,7 @@ impl StackExt for VecDeque<usize> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operation {
     Sa,
     Sb,
@@ -168,6 +168,10 @@ impl StackPair {
 
     pub fn logs(&self) -> &[Log] {
         &self.logs
+    }
+
+    pub fn set_logs(&mut self, logs: Vec<Log>) {
+        self.logs = logs;
     }
 
     pub fn total_ops(&self) -> usize {

@@ -1,4 +1,5 @@
 use push_swap_rs::algo::Algorithm;
+use push_swap_rs::optimizer;
 use push_swap_rs::{bench, bench_all, disorder, parse_values, process_and_rank};
 use push_swap_rs::stacks::{Log, StackPair};
 use std::env;
@@ -61,6 +62,8 @@ fn main() {
 
     if let Some(algo) = config.algo {
         algo.sort()(&mut stacks);
+        let optimized = optimizer::optimize(stacks.logs().to_vec());
+        stacks.set_logs(optimized);
 
         for log in stacks.logs() {
             if let Log::Execute(op) = log {
@@ -78,6 +81,8 @@ fn main() {
                 let mut s = stacks.clone();
                 thread::spawn(move || {
                     algo.sort()(&mut s);
+                    let optimized = optimizer::optimize(s.logs().to_vec());
+                    s.set_logs(optimized);
                     (s, algo)
                 })
             })
