@@ -39,7 +39,7 @@ impl StackExt for VecDeque<usize> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Operation {
     Sa,
     Sb,
@@ -52,6 +52,22 @@ pub enum Operation {
     Rra,
     Rrb,
     Rrr,
+}
+
+impl Operation {
+    pub const ALL: [Operation; 11] = [
+        Operation::Sa,
+        Operation::Sb,
+        Operation::Ss,
+        Operation::Pa,
+        Operation::Pb,
+        Operation::Ra,
+        Operation::Rb,
+        Operation::Rr,
+        Operation::Rra,
+        Operation::Rrb,
+        Operation::Rrr,
+    ];
 }
 
 impl fmt::Display for Operation {
