@@ -29,7 +29,12 @@ static RULESET: LazyLock<RuleSet> = LazyLock::new(|| {
     let json = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/superopt_cache.json"));
     let cache: CacheData = match serde_json::from_str(json) {
         Ok(c) => c,
-        Err(_) => return RuleSet { by_len: HashMap::new(), max_len: 0 },
+        Err(_) => {
+            return RuleSet {
+                by_len: HashMap::new(),
+                max_len: 0,
+            };
+        }
     };
 
     let mut max_len = 0;
@@ -179,7 +184,11 @@ fn optimize_with_order(mut ops: Vec<Operation>, b_first: bool) -> Vec<Operation>
 pub fn optimize(ops: Vec<Operation>) -> Vec<Operation> {
     let a_first = optimize_with_order(ops.clone(), false);
     let b_first = optimize_with_order(ops, true);
-    if a_first.len() <= b_first.len() { a_first } else { b_first }
+    if a_first.len() <= b_first.len() {
+        a_first
+    } else {
+        b_first
+    }
 }
 
 #[cfg(test)]
@@ -225,11 +234,7 @@ mod tests {
     }
 
     fn assert_optimizes_to(input: &[Operation], expected: &[Operation]) {
-        assert_eq!(
-            optimize(input.to_vec()),
-            expected,
-            "optimize({input:?})"
-        );
+        assert_eq!(optimize(input.to_vec()), expected, "optimize({input:?})");
     }
 
     // Cancellations (annihilators)

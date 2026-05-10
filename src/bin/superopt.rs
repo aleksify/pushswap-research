@@ -273,12 +273,7 @@ fn strings_to_ops(strings: &[String]) -> Vec<Operation> {
         .collect()
 }
 
-fn save_cache(
-    n: usize,
-    max_depth: usize,
-    oracle: &HashMap<State, Vec<Operation>>,
-    rules: &Rules,
-) {
+fn save_cache(n: usize, max_depth: usize, oracle: &HashMap<State, Vec<Operation>>, rules: &Rules) {
     let oracle_entries: Vec<OracleEntry> = oracle
         .iter()
         .map(|((sa, sb), ops)| OracleEntry {
@@ -315,9 +310,7 @@ fn load_cache() -> Option<CacheData> {
 
 /// Reconstruct oracle, rules, and reducible set from cached data so
 /// search can resume from `max_depth_explored + 1`.
-fn rebuild_from_cache(
-    cache: &CacheData,
-) -> (HashMap<State, Vec<Operation>>, Rules, ReducibleSet) {
+fn rebuild_from_cache(cache: &CacheData) -> (HashMap<State, Vec<Operation>>, Rules, ReducibleSet) {
     let mut oracle = HashMap::new();
     for entry in &cache.oracle {
         let state = (entry.state_a.clone(), entry.state_b.clone());
@@ -370,7 +363,6 @@ fn print_rules(rules: &Rules) {
     for seq in &rules.annihilators {
         println!("| {} |", fmt_ops(seq));
     }
-
 }
 
 // ── Main ──────────────────────────────────────────────────────────────
@@ -438,12 +430,18 @@ fn main() {
         .retain(|(from, to)| verify_rule(from, to, n));
 
     eprintln!("Verifying {} annihilators...", rules.annihilators.len());
-    rules
-        .annihilators
-        .retain(|seq| verify_rule(seq, &[], n));
+    rules.annihilators.retain(|seq| verify_rule(seq, &[], n));
 
     // Save verified rules
     save_cache(sz, n, &oracle, &rules);
 
-    print_rules(&rules);
+    if n <= 4 {
+        print_rules(&rules);
+    } else {
+        eprintln!(
+            "Done. {} reductions, {} annihilators. Saved to {CACHE_FILE}.",
+            rules.reductions.len(),
+            rules.annihilators.len()
+        );
+    }
 }
