@@ -34,7 +34,7 @@ release: ## Build the project in release mode (optimized)  and copy to root
 	cp target/release/checker .
 
 superopt: ## Build and run the superopt binary in release mode, use: make superopt N=5
-	$(CARGO) run --bin superopt --features superopt --release -- $(N)
+	$(CARGO) run --bin superopt --release -- $(N)
 
 help: ## Print this help message
 	@echo "Usage: make [target]"
