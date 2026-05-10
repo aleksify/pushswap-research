@@ -625,15 +625,31 @@ fn main() {
     );
 
     // Fuzz-verify all rules, drop failures
-    eprintln!("Verifying {} reductions...", rules.reductions.len());
-    rules
-        .reductions
-        .retain(|&(from, to)| verify_rule(from, to, n));
+    let n_reductions = rules.reductions.len();
+    eprintln!("Verifying {n_reductions} reductions...");
+    rules.reductions.retain(|&(from, to)| {
+        let ok = verify_rule(from, to, n);
+        if !ok {
+            eprintln!("  FUZZ FAIL: {} → {}", fmt_ops(from), fmt_ops(to));
+        }
+        ok
+    });
 
-    eprintln!("Verifying {} annihilators...", rules.annihilators.len());
-    rules
-        .annihilators
-        .retain(|&seq| verify_rule(seq, PackedSequence::empty(), n));
+    let n_annihilators = rules.annihilators.len();
+    eprintln!("Verifying {n_annihilators} annihilators...");
+    rules.annihilators.retain(|&seq| {
+        let ok = verify_rule(seq, PackedSequence::empty(), n);
+        if !ok {
+            eprintln!("  FUZZ FAIL: {} → ∅", fmt_ops(seq));
+        }
+        ok
+    });
+
+    let dropped = (n_reductions - rules.reductions.len())
+        + (n_annihilators - rules.annihilators.len());
+    if dropped > 0 {
+        eprintln!("Dropped {dropped} rules that failed fuzz verification");
+    }
 
     save_cache(sz, n, &oracle, &rules);
 
