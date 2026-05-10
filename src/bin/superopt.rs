@@ -13,7 +13,7 @@ type State = (Vec<usize>, Vec<usize>);
 /// Stack size for the canonical state. At least 3 so all 11 ops produce
 /// distinct states (with only 2 elements, swap == rotate).
 fn stack_size(n: usize) -> usize {
-    n.max(3)
+    (2 * n + 1).max(3)
 }
 
 /// Build a canonical state with `sz` elements in each stack, all distinct.
