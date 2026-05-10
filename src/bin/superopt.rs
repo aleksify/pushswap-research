@@ -232,6 +232,7 @@ fn verify_rule(lhs: &[Operation], rhs: &[Operation], n: usize) -> bool {
         }
 
         if sp_lhs.a() != sp_rhs.a() || sp_lhs.b() != sp_rhs.b() {
+            eprintln!("Fuzz failed");
             return false;
         }
     }
