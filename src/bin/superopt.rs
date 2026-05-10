@@ -5,10 +5,247 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::str::FromStr;
 
-// ── State Engine ──────────────────────────────────────────────────────
+/// Maximum supported search depth. Packed representations are sized for this.
+const N: usize = 10;
 
-/// Snapshot of both stacks, used as HashMap key for the oracle.
-type State = (Vec<usize>, Vec<usize>);
+// ── Packed Types ─────────────────────────────────────────────────────
+
+/// A stack packed into a u128.
+///
+/// Layout: `[len:5][elem_0:5][elem_1:5]...[elem_{len-1}:5]`
+/// elem_0 is the top of the stack. For N=10, max 20 elements × 5 bits
+/// + 5 bits length = 105 bits ≤ 128.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct PackedStack(u128);
+
+impl PackedStack {
+    const ELEM_BITS: u32 = 5;
+    const LEN_BITS: u32 = 5;
+    const ELEM_MASK: u128 = 0x1F;
+
+    fn len(self) -> u32 {
+        (self.0 & Self::ELEM_MASK) as u32
+    }
+
+    fn elem(self, i: u32) -> u128 {
+        (self.0 >> (Self::LEN_BITS + i * Self::ELEM_BITS)) & Self::ELEM_MASK
+    }
+
+    fn set_elem(self, i: u32, val: u128) -> Self {
+        let shift = Self::LEN_BITS + i * Self::ELEM_BITS;
+        Self((self.0 & !(Self::ELEM_MASK << shift)) | ((val & Self::ELEM_MASK) << shift))
+    }
+
+    fn from_slice(elems: &[usize]) -> Self {
+        let mut p = Self(elems.len() as u128);
+        for (i, &val) in elems.iter().enumerate() {
+            p = p.set_elem(i as u32, val as u128);
+        }
+        p
+    }
+
+    fn to_vec(self) -> Vec<usize> {
+        (0..self.len()).map(|i| self.elem(i) as usize).collect()
+    }
+
+    fn swap_top(self) -> Self {
+        if self.len() < 2 {
+            return self;
+        }
+        let e0 = self.elem(0);
+        let e1 = self.elem(1);
+        let mask = (Self::ELEM_MASK << Self::LEN_BITS)
+            | (Self::ELEM_MASK << (Self::LEN_BITS + Self::ELEM_BITS));
+        Self(
+            (self.0 & !mask)
+                | (e1 << Self::LEN_BITS)
+                | (e0 << (Self::LEN_BITS + Self::ELEM_BITS)),
+        )
+    }
+
+    fn pop_top(self) -> (Self, u128) {
+        debug_assert!(self.len() > 0);
+        let l = self.len();
+        let val = self.elem(0);
+        let src_start = Self::LEN_BITS + Self::ELEM_BITS;
+        let src_end = Self::LEN_BITS + l * Self::ELEM_BITS;
+        let mask = ((1u128 << src_end) - 1) & !((1u128 << src_start) - 1);
+        let shifted = (self.0 & mask) >> Self::ELEM_BITS;
+        (Self(((l - 1) as u128) | shifted), val)
+    }
+
+    fn push_top(self, val: u128) -> Self {
+        let l = self.len();
+        let src_start = Self::LEN_BITS;
+        let src_end = Self::LEN_BITS + l * Self::ELEM_BITS;
+        let mask = ((1u128 << src_end) - 1) & !((1u128 << src_start) - 1);
+        let shifted = (self.0 & mask) << Self::ELEM_BITS;
+        Self(((l + 1) as u128) | shifted | ((val & Self::ELEM_MASK) << Self::LEN_BITS))
+    }
+
+    fn rotate(self) -> Self {
+        let l = self.len();
+        if l <= 1 {
+            return self;
+        }
+        let top = self.elem(0);
+        let src_start = Self::LEN_BITS + Self::ELEM_BITS;
+        let src_end = Self::LEN_BITS + l * Self::ELEM_BITS;
+        let mask = ((1u128 << src_end) - 1) & !((1u128 << src_start) - 1);
+        let shifted = (self.0 & mask) >> Self::ELEM_BITS;
+        Self((l as u128) | shifted).set_elem(l - 1, top)
+    }
+
+    fn reverse_rotate(self) -> Self {
+        let l = self.len();
+        if l <= 1 {
+            return self;
+        }
+        let bottom = self.elem(l - 1);
+        let src_start = Self::LEN_BITS;
+        let src_end = Self::LEN_BITS + (l - 1) * Self::ELEM_BITS;
+        let mask = ((1u128 << src_end) - 1) & !((1u128 << src_start) - 1);
+        let shifted = (self.0 & mask) << Self::ELEM_BITS;
+        Self((l as u128) | shifted | ((bottom & Self::ELEM_MASK) << Self::LEN_BITS))
+    }
+}
+
+/// Packed state of both stacks. 32 bytes, Copy, zero-alloc.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct FastState {
+    a: PackedStack,
+    b: PackedStack,
+}
+
+impl FastState {
+    fn from_stack_pair(sp: &StackPair) -> Self {
+        let a: Vec<usize> = sp.a().iter().copied().collect();
+        let b: Vec<usize> = sp.b().iter().copied().collect();
+        Self {
+            a: PackedStack::from_slice(&a),
+            b: PackedStack::from_slice(&b),
+        }
+    }
+
+    fn execute(self, op: Operation) -> Self {
+        use Operation::*;
+        match op {
+            Sa => Self {
+                a: self.a.swap_top(),
+                b: self.b,
+            },
+            Sb => Self {
+                a: self.a,
+                b: self.b.swap_top(),
+            },
+            Ss => Self {
+                a: self.a.swap_top(),
+                b: self.b.swap_top(),
+            },
+            Pa => {
+                if self.b.len() == 0 {
+                    return self;
+                }
+                let (b, val) = self.b.pop_top();
+                Self {
+                    a: self.a.push_top(val),
+                    b,
+                }
+            }
+            Pb => {
+                if self.a.len() == 0 {
+                    return self;
+                }
+                let (a, val) = self.a.pop_top();
+                Self {
+                    a,
+                    b: self.b.push_top(val),
+                }
+            }
+            Ra => Self {
+                a: self.a.rotate(),
+                b: self.b,
+            },
+            Rb => Self {
+                a: self.a,
+                b: self.b.rotate(),
+            },
+            Rr => Self {
+                a: self.a.rotate(),
+                b: self.b.rotate(),
+            },
+            Rra => Self {
+                a: self.a.reverse_rotate(),
+                b: self.b,
+            },
+            Rrb => Self {
+                a: self.a,
+                b: self.b.reverse_rotate(),
+            },
+            Rrr => Self {
+                a: self.a.reverse_rotate(),
+                b: self.b.reverse_rotate(),
+            },
+        }
+    }
+}
+
+/// Up to 10 operations packed into a u64.
+///
+/// Layout: `[len:4][op_0:4][op_1:4]...[op_{len-1}:4]`
+/// 11 ops need 4 bits each. 10 ops × 4 + 4 = 44 bits ≤ 64.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct PackedSequence(u64);
+
+impl PackedSequence {
+    const OP_BITS: u32 = 4;
+    const LEN_BITS: u32 = 4;
+    const LEN_MASK: u64 = 0xF;
+    const OP_MASK: u64 = 0xF;
+
+    fn empty() -> Self {
+        Self(0)
+    }
+
+    fn len(self) -> u8 {
+        (self.0 & Self::LEN_MASK) as u8
+    }
+
+    fn get(self, i: u8) -> Operation {
+        let shift = Self::LEN_BITS + (i as u32) * Self::OP_BITS;
+        let val = ((self.0 >> shift) & Self::OP_MASK) as usize;
+        Operation::ALL[val]
+    }
+
+    fn push(self, op: Operation) -> Self {
+        let l = self.len() as u32;
+        let shift = Self::LEN_BITS + l * Self::OP_BITS;
+        Self((self.0 & !Self::LEN_MASK) | ((l + 1) as u64) | ((op as u64) << shift))
+    }
+
+    fn suffix(self, k: u8) -> Self {
+        let start = (self.len() - k) as u32;
+        let src_bit = Self::LEN_BITS + start * Self::OP_BITS;
+        let ops_mask = (1u64 << (k as u32 * Self::OP_BITS)) - 1;
+        let ops_bits = (self.0 >> src_bit) & ops_mask;
+        Self((ops_bits << Self::LEN_BITS) | k as u64)
+    }
+
+    fn from_ops(ops: &[Operation]) -> Self {
+        let mut p = Self(ops.len() as u64);
+        for (i, &op) in ops.iter().enumerate() {
+            let shift = Self::LEN_BITS + (i as u32) * Self::OP_BITS;
+            p.0 |= (op as u64) << shift;
+        }
+        p
+    }
+
+    fn to_vec(self) -> Vec<Operation> {
+        (0..self.len()).map(|i| self.get(i)).collect()
+    }
+}
+
+// ── State Engine ─────────────────────────────────────────────────────
 
 /// Stack size for the canonical state. At least 3 so all 11 ops produce
 /// distinct states (with only 2 elements, swap == rotate).
@@ -16,69 +253,51 @@ fn stack_size(n: usize) -> usize {
     n.max(3)
 }
 
-/// Build a canonical state with `sz` elements in each stack, all distinct.
-/// Created by putting `[1..=2*sz]` into A then executing `pb` sz times.
-fn canonical_state(n: usize) -> StackPair {
+/// Build a canonical state via StackPair (one-time, correctness over speed).
+fn canonical_state(n: usize) -> FastState {
     let sz = stack_size(n);
     let values: Vec<usize> = (1..=2 * sz).collect();
     let mut sp = StackPair::new(values);
     for _ in 0..sz {
         sp.execute(Operation::Pb);
     }
-    sp.set_logs(vec![]);
-    sp
+    FastState::from_stack_pair(&sp)
 }
 
-fn get_state(sp: &StackPair) -> State {
-    (
-        sp.a().iter().copied().collect(),
-        sp.b().iter().copied().collect(),
-    )
-}
+// ── Reducible Pattern Set ────────────────────────────────────────────
 
-// ── Reducible Pattern Set ─────────────────────────────────────────────
-
-/// Tracks operation sequences known to have a shorter equivalent.
-/// Organized by pattern length for efficient suffix lookups during
-/// recursive enumeration.
 struct ReducibleSet {
-    by_length: HashMap<usize, HashSet<Vec<Operation>>>,
+    by_length: Vec<HashSet<PackedSequence>>,
 }
 
 impl ReducibleSet {
     fn new() -> Self {
         Self {
-            by_length: HashMap::new(),
+            by_length: vec![HashSet::new(); N + 1],
         }
     }
 
-    fn add(&mut self, pattern: &[Operation]) {
-        self.by_length
-            .entry(pattern.len())
-            .or_default()
-            .insert(pattern.to_vec());
+    fn add(&mut self, pattern: PackedSequence) {
+        self.by_length[pattern.len() as usize].insert(pattern);
     }
 
-    /// Check if any suffix of `seq` matches a known reducible pattern.
-    /// Only suffixes needed: non-suffix windows were checked when those ops were added.
-    fn has_reducible_suffix(&self, seq: &[Operation]) -> bool {
-        for (&pat_len, patterns) in &self.by_length {
-            if pat_len <= seq.len() {
-                let suffix = &seq[seq.len() - pat_len..];
-                if patterns.contains(suffix) {
-                    return true;
-                }
+    fn has_reducible_suffix(&self, seq: PackedSequence) -> bool {
+        let l = seq.len();
+        for pat_len in 2..=l {
+            let set = &self.by_length[pat_len as usize];
+            if !set.is_empty() && set.contains(&seq.suffix(pat_len)) {
+                return true;
             }
         }
         false
     }
 }
 
-// ── Rules ─────────────────────────────────────────────────────────────
+// ── Rules ────────────────────────────────────────────────────────────
 
 struct Rules {
-    reductions: Vec<(Vec<Operation>, Vec<Operation>)>,
-    annihilators: Vec<Vec<Operation>>,
+    reductions: Vec<(PackedSequence, PackedSequence)>,
+    annihilators: Vec<PackedSequence>,
 }
 
 impl Rules {
@@ -90,97 +309,80 @@ impl Rules {
     }
 }
 
-// ── Search ────────────────────────────────────────────────────────────
+// ── Search ───────────────────────────────────────────────────────────
 
-/// Rebuild the BFS frontier from the oracle when resuming from cache.
-/// Frontier = all oracle entries at `depth`, with StackPairs reconstructed
-/// by replaying ops from canonical state.
+/// Rebuild BFS frontier from oracle. FastState is the key, so no replay needed.
 fn rebuild_frontier(
-    oracle: &HashMap<State, Vec<Operation>>,
-    canonical: &StackPair,
+    oracle: &HashMap<FastState, PackedSequence>,
     depth: usize,
-) -> Vec<(StackPair, Vec<Operation>)> {
+) -> Vec<(FastState, PackedSequence)> {
     oracle
-        .values()
-        .filter(|ops| ops.len() == depth)
-        .map(|ops| {
-            let mut sp = canonical.clone();
-            for &op in ops {
-                sp.execute(op);
-            }
-            sp.set_logs(vec![]);
-            (sp, ops.clone())
-        })
+        .iter()
+        .filter(|(_, ops)| ops.len() as usize == depth)
+        .map(|(&state, &ops)| (state, ops))
         .collect()
 }
 
 /// BFS search from `start_depth` through `max_depth`.
-/// Expands frontier level by level, discovering reduction rules and
-/// populating the oracle. Saves cache after each depth.
 fn search_bfs(
     max_depth: usize,
     start_depth: usize,
-    canonical: &StackPair,
+    canonical: FastState,
     n: usize,
-    oracle: &mut HashMap<State, Vec<Operation>>,
+    oracle: &mut HashMap<FastState, PackedSequence>,
     rules: &mut Rules,
     reducible: &mut ReducibleSet,
 ) {
-    // Build frontier: states from previous depth level
     let mut frontier = if start_depth == 1 {
-        vec![(canonical.clone(), vec![])]
+        vec![(canonical, PackedSequence::empty())]
     } else {
-        rebuild_frontier(oracle, canonical, start_depth - 1)
+        rebuild_frontier(oracle, start_depth - 1)
     };
 
     for depth in start_depth..=max_depth {
         let reds_before = rules.reductions.len() + rules.annihilators.len();
         eprintln!(
-            "Depth {depth}: searching (oracle size: {}, frontier: {})...",
+            "Depth {depth}: searching (oracle: {}, frontier: {})...",
             oracle.len(),
             frontier.len()
         );
 
         let mut next_frontier = Vec::new();
-        let mut new_reducible: Vec<Vec<Operation>> = Vec::new();
+        let mut new_reducible: Vec<PackedSequence> = Vec::new();
 
-        for (sp, ops) in &frontier {
+        for &(state, ops) in &frontier {
             for &op in &Operation::ALL {
-                let mut new_ops = ops.clone();
-                new_ops.push(op);
+                let new_ops = ops.push(op);
 
-                if reducible.has_reducible_suffix(&new_ops) {
+                if reducible.has_reducible_suffix(new_ops) {
                     continue;
                 }
 
-                let mut sp_new = sp.clone();
-                sp_new.execute(op);
-                sp_new.set_logs(vec![]);
-                let state = get_state(&sp_new);
+                let new_state = state.execute(op);
 
-                if let Some(existing) = oracle.get(&state) {
+                if let Some(&existing) = oracle.get(&new_state) {
                     if existing.len() < new_ops.len() {
-                        if existing.is_empty() {
-                            rules.annihilators.push(new_ops.clone());
+                        if existing.len() == 0 {
+                            rules.annihilators.push(new_ops);
                         } else {
-                            rules.reductions.push((new_ops.clone(), existing.clone()));
+                            rules.reductions.push((new_ops, existing));
                         }
                         new_reducible.push(new_ops);
                     }
                 } else {
-                    oracle.insert(state, new_ops.clone());
-                    next_frontier.push((sp_new, new_ops));
+                    oracle.insert(new_state, new_ops);
+                    next_frontier.push((new_state, new_ops));
                 }
             }
         }
 
         for pattern in new_reducible {
-            reducible.add(&pattern);
+            reducible.add(pattern);
         }
 
         let new_reds = (rules.reductions.len() + rules.annihilators.len()) - reds_before;
         eprintln!(
-            "Depth {depth}: done. +{new_reds} reductions, oracle size: {}",
+            "Depth {depth}: done. +{new_reds} reductions, oracle: {}",
             oracle.len()
         );
 
@@ -189,9 +391,8 @@ fn search_bfs(
     }
 }
 
-// ── Fuzz Verifier ─────────────────────────────────────────────────────
+// ── Fuzz Verifier ────────────────────────────────────────────────────
 
-/// Build a StackPair with `a_size` elements in A and `b_size` in B.
 fn make_config(a_size: usize, b_size: usize) -> StackPair {
     let total = a_size + b_size;
     if total == 0 {
@@ -205,14 +406,12 @@ fn make_config(a_size: usize, b_size: usize) -> StackPair {
     sp
 }
 
-/// Test that `lhs` and `rhs` produce identical stacks across 1,000 random
-/// configurations. Both stacks start with enough elements that no operation
-/// in either sequence is a no-op (min 2 per stack for swaps/rotates, plus
-/// enough for the longest run of pushes in one direction).
-fn verify_rule(lhs: &[Operation], rhs: &[Operation], n: usize) -> bool {
+fn verify_rule(lhs: PackedSequence, rhs: PackedSequence, n: usize) -> bool {
+    let lhs_ops = lhs.to_vec();
+    let rhs_ops = rhs.to_vec();
     let mut rng = rand::rng();
     let max_total = 2 * n + 10;
-    let min_per_stack = lhs.len().max(rhs.len()).max(2);
+    let min_per_stack = lhs_ops.len().max(rhs_ops.len()).max(2);
 
     for _ in 0..1000 {
         let total = rng.random_range(2 * min_per_stack..=max_total);
@@ -222,12 +421,12 @@ fn verify_rule(lhs: &[Operation], rhs: &[Operation], n: usize) -> bool {
         let base = make_config(a_size, b_size);
 
         let mut sp_lhs = base.clone();
-        for &op in lhs {
+        for &op in &lhs_ops {
             sp_lhs.execute(op);
         }
 
         let mut sp_rhs = base;
-        for &op in rhs {
+        for &op in &rhs_ops {
             sp_rhs.execute(op);
         }
 
@@ -238,11 +437,7 @@ fn verify_rule(lhs: &[Operation], rhs: &[Operation], n: usize) -> bool {
     true
 }
 
-// ── Persistence ───────────────────────────────────────────────────────
-//
-// Operations are serialized as strings via Display/FromStr since we can't
-// derive Serialize on a foreign type. The cache stores the full oracle
-// (state → shortest sequence) plus all discovered rules.
+// ── Persistence ──────────────────────────────────────────────────────
 
 const CACHE_FILE: &str = "superopt_cache.json";
 
@@ -276,15 +471,15 @@ fn strings_to_ops(strings: &[String]) -> Vec<Operation> {
 fn save_cache(
     n: usize,
     max_depth: usize,
-    oracle: &HashMap<State, Vec<Operation>>,
+    oracle: &HashMap<FastState, PackedSequence>,
     rules: &Rules,
 ) {
     let oracle_entries: Vec<OracleEntry> = oracle
         .iter()
-        .map(|((sa, sb), ops)| OracleEntry {
-            state_a: sa.clone(),
-            state_b: sb.clone(),
-            ops: ops_to_strings(ops),
+        .map(|(state, ops)| OracleEntry {
+            state_a: state.a.to_vec(),
+            state_b: state.b.to_vec(),
+            ops: ops_to_strings(&ops.to_vec()),
         })
         .collect();
 
@@ -295,12 +490,12 @@ fn save_cache(
         reductions: rules
             .reductions
             .iter()
-            .map(|(from, to)| (ops_to_strings(from), ops_to_strings(to)))
+            .map(|(from, to)| (ops_to_strings(&from.to_vec()), ops_to_strings(&to.to_vec())))
             .collect(),
         annihilators: rules
             .annihilators
             .iter()
-            .map(|seq| ops_to_strings(seq))
+            .map(|seq| ops_to_strings(&seq.to_vec()))
             .collect(),
     };
 
@@ -313,15 +508,16 @@ fn load_cache() -> Option<CacheData> {
     serde_json::from_str(&json).ok()
 }
 
-/// Reconstruct oracle, rules, and reducible set from cached data so
-/// search can resume from `max_depth_explored + 1`.
 fn rebuild_from_cache(
     cache: &CacheData,
-) -> (HashMap<State, Vec<Operation>>, Rules, ReducibleSet) {
+) -> (HashMap<FastState, PackedSequence>, Rules, ReducibleSet) {
     let mut oracle = HashMap::new();
     for entry in &cache.oracle {
-        let state = (entry.state_a.clone(), entry.state_b.clone());
-        let ops = strings_to_ops(&entry.ops);
+        let state = FastState {
+            a: PackedStack::from_slice(&entry.state_a),
+            b: PackedStack::from_slice(&entry.state_b),
+        };
+        let ops = PackedSequence::from_ops(&strings_to_ops(&entry.ops));
         oracle.insert(state, ops);
     }
 
@@ -329,28 +525,28 @@ fn rebuild_from_cache(
     for (from, to) in &cache.reductions {
         rules
             .reductions
-            .push((strings_to_ops(from), strings_to_ops(to)));
+            .push((PackedSequence::from_ops(&strings_to_ops(from)), PackedSequence::from_ops(&strings_to_ops(to))));
     }
     for seq in &cache.annihilators {
-        rules.annihilators.push(strings_to_ops(seq));
+        rules.annihilators.push(PackedSequence::from_ops(&strings_to_ops(seq)));
     }
 
-    // Rebuild reducible set from known reductions + annihilators
     let mut reducible = ReducibleSet::new();
-    for (from, _) in &rules.reductions {
+    for &(from, _) in &rules.reductions {
         reducible.add(from);
     }
-    for seq in &rules.annihilators {
+    for &seq in &rules.annihilators {
         reducible.add(seq);
     }
 
     (oracle, rules, reducible)
 }
 
-// ── Output Formatter ──────────────────────────────────────────────────
+// ── Output Formatter ─────────────────────────────────────────────────
 
-fn fmt_ops(ops: &[Operation]) -> String {
-    ops.iter()
+fn fmt_ops(seq: PackedSequence) -> String {
+    seq.to_vec()
+        .iter()
         .map(|op| op.to_string())
         .collect::<Vec<_>>()
         .join(", ")
@@ -360,20 +556,19 @@ fn print_rules(rules: &Rules) {
     println!("## Strict Reductions (N → shorter)\n");
     println!("| From | To |");
     println!("|------|----|");
-    for (from, to) in &rules.reductions {
+    for &(from, to) in &rules.reductions {
         println!("| {} | {} |", fmt_ops(from), fmt_ops(to));
     }
 
     println!("\n## Annihilators (N → empty)\n");
     println!("| Sequence |");
     println!("|----------|");
-    for seq in &rules.annihilators {
+    for &seq in &rules.annihilators {
         println!("| {} |", fmt_ops(seq));
     }
-
 }
 
-// ── Main ──────────────────────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────────────
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -389,14 +584,17 @@ fn main() {
         eprintln!("Error: max_depth must be >= 2");
         std::process::exit(1);
     }
+    if n > N {
+        eprintln!("Error: max_depth must be <= {N} (packed representation limit)");
+        std::process::exit(1);
+    }
 
-    // Load cache
     let sz = stack_size(n);
+    let canonical = canonical_state(n);
 
     let (mut oracle, mut rules, mut reducible, start_depth) = match load_cache() {
         Some(cache) if cache.canonical_n == sz => {
             if cache.max_depth_explored >= n {
-                // Already fully explored — just print
                 let (_, rules, _) = rebuild_from_cache(&cache);
                 print_rules(&rules);
                 return;
@@ -410,21 +608,16 @@ fn main() {
             (oracle, rules, reducible, start)
         }
         _ => {
-            // Fresh start
-            let canonical = canonical_state(n);
-            let initial_state = get_state(&canonical);
             let mut oracle = HashMap::new();
-            oracle.insert(initial_state, vec![]);
+            oracle.insert(canonical, PackedSequence::empty());
             (oracle, Rules::new(), ReducibleSet::new(), 1)
         }
     };
 
-    let canonical = canonical_state(n);
-
     search_bfs(
         n,
         start_depth,
-        &canonical,
+        canonical,
         n,
         &mut oracle,
         &mut rules,
@@ -435,14 +628,13 @@ fn main() {
     eprintln!("Verifying {} reductions...", rules.reductions.len());
     rules
         .reductions
-        .retain(|(from, to)| verify_rule(from, to, n));
+        .retain(|&(from, to)| verify_rule(from, to, n));
 
     eprintln!("Verifying {} annihilators...", rules.annihilators.len());
     rules
         .annihilators
-        .retain(|seq| verify_rule(seq, &[], n));
+        .retain(|&seq| verify_rule(seq, PackedSequence::empty(), n));
 
-    // Save verified rules
     save_cache(sz, n, &oracle, &rules);
 
     print_rules(&rules);
