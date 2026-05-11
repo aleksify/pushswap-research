@@ -1,0 +1,47 @@
+name: Release Multi-Platform
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build for ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            artifact_name: my-app-linux-musl
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact_name: my-app-macos-arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Musl Tools (Linux only)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build Binary (Your Makefile Commands)
+        run: |
+          make superopt N=5
+          make release
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./push_swap
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
