@@ -68,7 +68,7 @@ The superoptimizer's exhaustive approach hits three scaling walls as N grows:
 
 - **Memory**: The BFS oracle grows exponentially with depth. Bit-packing operation sequences and states could help, but only delays the inevitable — beyond N=10 or so, the working set would need to be backed by an on-disk database rather than held in RAM.
 - **Binary size**: All discovered rules are embedded into the final binary via `include_str!`. At N=8, the binary approaches 400 MB; at N=9, it's close to 2 GB.
-- **Diminishing returns**: The number of rules explodes with depth, but most of them never fire in practice. Higher-depth rules match increasingly rare patterns that well-designed algorithms like Turk rarely produce.
+- **Diminishing returns**: The number of rules explodes with depth, but most of them never fire in practice. Higher-depth rules match increasingly rare patterns that most algorithms rarely produce.
 
 In short: RAM usage, binary size, and rule count all blow up, while the actual optimization gains diminish rapidly.
 
