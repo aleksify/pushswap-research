@@ -62,6 +62,23 @@ The canonical state uses stacks of size `2N+1` (with a floor of 3). This size is
 
 Results are cached in `superopt_cache.json`, and the search can resume from the last explored depth. The cache is embedded into the optimizer binary at compile time via `include_str!`.
 
+## Current Issues
+
+The superoptimizer's exhaustive approach hits three scaling walls as N grows:
+
+- **Memory**: The BFS oracle grows exponentially with depth. Bit-packing operation sequences and states could help, but only delays the inevitable — beyond N=10 or so, the working set would need to be backed by an on-disk database rather than held in RAM.
+- **Binary size**: All discovered rules are embedded into the final binary via `include_str!`. At N=8, the binary approaches 400 MB; at N=9, it's close to 2 GB.
+- **Diminishing returns**: The number of rules explodes with depth, but most of them never fire in practice. Higher-depth rules match increasingly rare patterns that well-designed algorithms like Turk rarely produce.
+
+In short: RAM usage, binary size, and rule count all blow up, while the actual optimization gains diminish rapidly.
+
+**Where to go from here?** Rather than discovering rules universally across all possible stack states, a more promising direction would be algorithm-specific optimization — generating rules only for patterns that a given algorithm actually produces. Two approaches:
+
+1. **Corpus-driven search**: Fuzz each algorithm with thousands of random inputs, collect the operation sequences, and run the superoptimizer only over that corpus. This dramatically shrinks the search space by focusing on states the algorithm actually visits.
+2. **Post-hoc pruning**: Run the full superoptimizer, then fuzz-test to identify which rules were actually applied, and discard the rest.
+
+That said, even these approaches face diminishing returns. Heuristic algorithms like Turk are already intelligent enough in their move selection that there's less room for a post-hoc optimizer to improve on.
+
 ## How to build
 
 The project uses a Makefile for common tasks:
