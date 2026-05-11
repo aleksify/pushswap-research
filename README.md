@@ -1,3 +1,13 @@
+## How to run
+You can build it locally (instructions at the bottom), or if you don't have Rust & cargo installed, you can download a binary from the Releases page. They were generated using GitHub Actions for which there's a log, so you can check that it wasn't tampered with.
+
+Use this to download the Linux binary and chmod it:
+```
+curl -L -o push_swap https://github.com/aleksify/pushswap-optimizer/releases/download/v0.4/push_swap && chmod +x push_swap
+```
+
+The default binary is a generic linux binary that should work on any distro, since it's statically linked with musl. The `_mac` binary is built for Apple Silicon Macs, but in order to run that binary, you'd need to run some commands since Apple by default forbids you to run unsigned binaries, so it's easier to build locally to be honest. But you can use these commands to run that binary: `xattr -cr push_swap_mac` to remove it from quarantine, and `codesign --force --deep -s - push_swap_mac` to sign it yourself.
+
 ## The Game
 
 This is a solver for **push_swap**, a project from School 42. The challenge: given a stack A of integers, sort it in ascending order using only a limited set of operations, and do it in as few moves as possible.
@@ -52,7 +62,7 @@ The canonical state uses stacks of size `2N+1` (with a floor of 3). This size is
 
 Results are cached in `superopt_cache.json`, and the search can resume from the last explored depth. The cache is embedded into the optimizer binary at compile time via `include_str!`.
 
-## How to use
+## How to build
 
 The project uses a Makefile for common tasks:
 
