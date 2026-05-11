@@ -382,7 +382,7 @@ fn main() {
         eprintln!("Error: max_depth must be >= 2");
         std::process::exit(1);
     }
-        if n > 8 {
+    if n > 8 {
         eprintln!("Error: max_depth must be <= 8 (OOM limit)");
         std::process::exit(1);
     }
