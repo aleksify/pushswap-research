@@ -1,13 +1,13 @@
 ## The Game
 
-This is a solver for **push_swap**, a project from School 42. The challenge: given a stack A of integers, sort it in ascending order using only a limited set of operations — and do it in as few moves as possible.
+This is a solver for **push_swap**, a project from School 42. The challenge: given a stack A of integers, sort it in ascending order using only a limited set of operations, and do it in as few moves as possible.
 
 The rules:
-- You have two stacks, **A** and **B**. A starts with all the input values; B starts empty.
+- You have two stacks, A and B. A starts with all the input values; B starts empty.
 - You can only manipulate stacks through 11 operations: swaps (`sa`, `sb`, `ss`), pushes (`pa`, `pb`), rotations (`ra`, `rb`, `rr`), and reverse rotations (`rra`, `rrb`, `rrr`).
 - The goal is to get all values sorted in A using the fewest operations.
 
-While these are called "stacks," the rotation operations (moving top to bottom or bottom to top) mean they actually behave more like **deques** (double-ended queues).
+While these are called "stacks," the rotation operations (moving top to bottom or bottom to top) mean they actually behave more like deques (double-ended queues).
 
 Composite operations (`ss`, `rr`, `rrr`) apply to both stacks simultaneously for the cost of a single move — e.g., `ss` does `sa` + `sb` in one operation, so merging two independent single-stack ops into a composite saves a move.
 
@@ -22,13 +22,13 @@ By default, the `push_swap` binary runs all available sorting algorithms in para
 
 ## Optimizer
 
-The optimizer (`src/optimizer.rs`) is a universal peephole optimizer that post-processes the operation sequence produced by any sorting algorithm, rewriting it to use fewer moves. It runs in a fixed-point loop — repeatedly applying passes until no further reductions are found.
+The optimizer (`src/optimizer.rs`) is a universal peephole optimizer that post-processes the operation sequence produced by any sorting algorithm, rewriting it to use fewer moves. It repeatedly applies passes until no further reductions are found.
 
 It operates in two passes:
 
-1. **Normalization pass** — Between barrier operations (`pa`, `pb`, `ss`, `rr`, `rrr`), operations on stack A and stack B are independent and can be freely reordered. This pass groups A-ops and B-ops within each barrier-free block, bringing same-stack operations adjacent to each other. This exposes cancellations and merges that wouldn't be visible in the original interleaved order. Both A-first and B-first orderings are tried, and the shorter result is kept.
+1. **Normalization pass**: Between barrier operations (`pa`, `pb`, `ss`, `rr`, `rrr`), operations on stack A and stack B are independent and can be freely reordered. This pass groups A-ops and B-ops within each barrier-free block, bringing same-stack operations adjacent to each other. This exposes cancellations and merges that wouldn't be visible in the original interleaved order. Both A-first and B-first orderings are tried, and the shorter result is kept.
 
-2. **Peephole pass** — Scans with variable-width windows (longest first, greedy) and applies rewrite rules from a lookup table. Rules come in two flavors:
+2. **Peephole pass**: Scans with variable-width windows (longest first, greedy) and applies rewrite rules from a lookup table. Rules come in two flavors:
    - **Annihilators**: sequences that cancel to nothing (e.g., `ra rra` -> empty).
    - **Reductions**: sequences replaceable by shorter equivalents (e.g., `ra rb` -> `rr`, or `ra pb rra` -> `sa pb`).
 
@@ -46,7 +46,7 @@ Our superoptimizer (`src/bin/superopt.rs`) generates the rewrite rule table used
 2. An **oracle** (hash map from stack state to shortest known operation sequence) tracks the first time each state is reached.
 3. When a longer sequence reaches an already-known state, the difference is a rewrite rule: the longer sequence can be replaced by the shorter one (a **reduction**), or eliminated entirely if the state is the starting state (an **annihilator**).
 4. A **reducible suffix set** prunes the search: any sequence ending in a known-reducible pattern is skipped, since it could never be optimal.
-5. All discovered rules are **fuzz-verified** against 1,000 random stack configurations to guard against hash collisions or bugs.
+5. All discovered rules are **fuzz-verified** against 1,000 random stack configurations to guard against bugs.
 
 The canonical state uses stacks of size `2N+1` (with a floor of 3). This size is the minimum needed to guarantee that all 11 operations produce distinct state transitions — with fewer elements, some operations become degenerate (e.g., swap is identical to rotate on a 2-element stack), and the discovered rules might not generalize to larger stacks.
 
