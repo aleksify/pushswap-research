@@ -16,10 +16,10 @@ jobs:
         include:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            artifact_name: my-app-linux-musl
+            artifact_name: push_swap
           - target: aarch64-apple-darwin
             os: macos-latest
-            artifact_name: my-app-macos-arm64
+            artifact_name: push_swap_mac
 
     steps:
       - name: Checkout code
@@ -34,14 +34,19 @@ jobs:
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Build Binary (Your Makefile Commands)
+      - name: Build Binary
         run: |
           make superopt N=5
           make release
 
+      - name: Prepare Binary for Upload
+        run: |
+          mkdir -p out/
+          mv ./push_swap out/${{ matrix.artifact_name }}
+
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ./push_swap
+          files: out/${{ matrix.artifact_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
