@@ -1,4 +1,26 @@
+## Introduction
+
+This project started as a School 42 assignment - write a program that sorts a stack of integers using a limited set of 11 operations, in as few moves as possible.
+
+I wanted to push further. The journey went roughly like this:
+
+1. **Multiple algorithms in parallel.** The solver runs different sorting algorithms concurrently on every input and picks whichever produces the shortest output. Different algorithms win on different input distributions.
+2. **A peephole optimizer.** Some algorithms emit sequences with local redundancies - `ra` followed by `rra` cancels out, `ra` followed by `rb` can collapse to `rr`, etc. I wrote a peephole optimizer that post-processes the output, rewriting these patterns away. The first version used a handful of hand-written rules.
+3. **A superoptimizer to generate the rules.** Hand-writing rewrite rules is tedious and incomplete — you'll always miss patterns. So I built a superoptimizer: an exhaustive BFS search over the state space of stack configurations that discovers every reducible operation sequence up to a given depth. The optimizer's rule table is generated at build time from this search.
+4. **Hit the scaling wall.** Past a certain depth, the rule count and binary size explode while the actual gains diminish. This led to thinking about algorithm-specific optimization rather than universal rules — see [Current Issues](#current-issues).
+
+Table of Contents
+=================
+
+* [How to run](#how-to-run)
+* [The Game](#the-game)
+* [Optimizer](#optimizer)
+* [Superoptimizer](#superoptimizer)
+* [Current Issues](#current-issues)
+* [How to build](#how-to-build)
+
 ## How to run
+
 You can build it locally (instructions at the bottom), or if you don't have Rust & cargo installed, you can download a binary from the Releases page. They were generated using GitHub Actions for which there's a log, so you can check that it wasn't tampered with.
 
 Use this to download the Linux binary and chmod it:
@@ -10,7 +32,7 @@ The default binary is a generic linux binary that should work on any distro, sin
 
 ## The Game
 
-This is a solver for **push_swap**, a project from School 42. The challenge: given a stack A of integers, sort it in ascending order using only a limited set of operations, and do it in as few moves as possible.
+push_swap is a School 42 project. The challenge: given a stack A of integers, sort it in ascending order using only a limited set of operations, and do it in as few moves as possible.
 
 The rules:
 - You have two stacks, A and B. A starts with all the input values; B starts empty.
@@ -108,4 +130,3 @@ Other Makefile targets:
 | `make clean-cache` | Reset `superopt_cache.json` to empty |
 | `make clean` | Remove built binaries from root |
 | `make fclean` | Full clean (including `target/`) |
-
