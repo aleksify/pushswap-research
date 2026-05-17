@@ -13,6 +13,7 @@ macro_rules! sort_name {
 
 mod sort_insertion;
 mod sort_k_chunk;
+mod sort_quick2;
 mod sort_selection;
 mod sort_three;
 mod sort_turk;
@@ -21,6 +22,7 @@ mod test_utils;
 
 pub use sort_insertion::sort_insertion;
 pub use sort_k_chunk::sort_k_chunk;
+pub use sort_quick2::sort_quick2;
 pub use sort_selection::sort_selection;
 pub use sort_turk::sort_turk;
 
@@ -33,6 +35,7 @@ pub enum Algorithm {
     Insertion,
     KSort,
     Turk,
+    Quick2,
 }
 
 impl fmt::Display for Algorithm {
@@ -47,6 +50,7 @@ impl Algorithm {
         Algorithm::Insertion,
         Algorithm::KSort,
         Algorithm::Turk,
+        Algorithm::Quick2,
     ];
 
     pub fn name(self) -> &'static str {
@@ -55,6 +59,7 @@ impl Algorithm {
             Algorithm::Insertion => sort_insertion::name(),
             Algorithm::KSort => sort_k_chunk::name(),
             Algorithm::Turk => sort_turk::name(),
+            Algorithm::Quick2 => sort_quick2::name(),
         }
     }
 
@@ -68,6 +73,7 @@ impl Algorithm {
             Algorithm::Insertion => sort_insertion,
             Algorithm::KSort => sort_k_chunk,
             Algorithm::Turk => sort_turk,
+            Algorithm::Quick2 => sort_quick2,
         }
     }
 }
