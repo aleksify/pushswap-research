@@ -15,6 +15,7 @@ mod sort_insertion;
 mod sort_k_chunk;
 mod sort_quick2;
 mod sort_quick3;
+mod sort_radix;
 mod sort_selection;
 mod sort_three;
 mod sort_turk;
@@ -25,6 +26,7 @@ pub use sort_insertion::sort_insertion;
 pub use sort_k_chunk::sort_k_chunk;
 pub use sort_quick2::sort_quick2;
 pub use sort_quick3::sort_quick3;
+pub use sort_radix::sort_radix;
 pub use sort_selection::sort_selection;
 pub use sort_turk::sort_turk;
 
@@ -39,6 +41,7 @@ pub enum Algorithm {
     Turk,
     Quick2,
     Quick3,
+    Radix,
 }
 
 impl fmt::Display for Algorithm {
@@ -55,6 +58,7 @@ impl Algorithm {
         Algorithm::Turk,
         Algorithm::Quick2,
         Algorithm::Quick3,
+        Algorithm::Radix,
     ];
 
     pub fn name(self) -> &'static str {
@@ -65,6 +69,7 @@ impl Algorithm {
             Algorithm::Turk => sort_turk::name(),
             Algorithm::Quick2 => sort_quick2::name(),
             Algorithm::Quick3 => sort_quick3::name(),
+            Algorithm::Radix => sort_radix::name(),
         }
     }
 
@@ -80,6 +85,7 @@ impl Algorithm {
             Algorithm::Turk => sort_turk,
             Algorithm::Quick2 => sort_quick2,
             Algorithm::Quick3 => sort_quick3,
+            Algorithm::Radix => sort_radix,
         }
     }
 }
