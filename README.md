@@ -17,6 +17,7 @@ Table of Contents
 * [Optimizer](#optimizer)
 * [Superoptimizer](#superoptimizer)
 * [Current Issues](#current-issues)
+* [More Thoughts](#more-thoughts)
 * [How to build](#how-to-build)
 
 ## How to run
@@ -100,6 +101,24 @@ In short: RAM usage, binary size, and rule count all blow up, while the actual o
 2. **Post-hoc pruning**: Run the full superoptimizer, then fuzz-test to identify which rules were actually applied, and discard the rest.
 
 That said, even these approaches face diminishing returns. Heuristic algorithms like Turk are already intelligent enough in their move selection that there's less room for a post-hoc optimizer to improve on.
+
+## More Thoughts
+
+So far, every approach in this project is either a hand-designed sorting algorithm or a post-hoc optimizer on top of one. But there's a whole other class of techniques worth considering — ones that *search* for solutions directly rather than constructing them procedurally:
+
+- **Genetic algorithms**: Evolve a population of operation sequences. Crossover splices sequences together, mutation flips or inserts operations, and selection keeps the fittest. Over generations, the population converges toward shorter solutions.
+- **Reinforcement learning**: Treat sorting as a game. State = current stacks, actions = the 11 operations, reward = sorting completion (minus a per-op cost). Train a policy network (e.g., PPO, AlphaZero-style MCTS) to pick moves. The network learns to navigate the state space without explicit rules.
+- **Heuristic lookahead**: Beam search or Monte Carlo Tree Search with a bounded horizon. At each step, expand candidate move sequences up to depth K, score the resulting states, and commit to the best path's first move.
+
+**The common obstacle: fitness.** All three approaches need a way to score how "close to sorted" a given (A, B) state is. The naive choice — count inversions in A, or measure displacement from sorted order — fundamentally doesn't work for push_swap.
+
+The reason: **sorting often requires first *adding* disorder.** To sort a stack with push_swap, you typically push values to B, rearrange them there, and push them back in the right order. During this process, A looks more disordered than when you started — values have been removed, rotations have shuffled what remains. A naive fitness function would punish exactly the moves a good algorithm needs to make. It's like Tower of Hanoi: progress requires intermediate states that look like regressions.
+
+A workable fitness function would need to model the *structure* of a valid sort, not just the appearance of order. Some ideas:
+
+- **Value-aware decomposition**: Allow B to be "sorted descending" and A to be "sorted ascending" — measure inversions within each, but treat the split itself as free. Penalize only when values are in the wrong stack *and* in the wrong relative order.
+- **Distance to a reachable canonical**: Precompute (via superoptimizer-style BFS) the shortest path from any small state to the sorted goal, and use that as a learned distance metric for larger states.
+- **Learned fitness**: Let the RL agent learn its own value function from terminal rewards alone (AlphaZero-style). This avoids hand-designing fitness but pays the cost of a much harder training problem.
 
 ## How to build
 
