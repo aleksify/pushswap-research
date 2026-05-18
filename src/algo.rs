@@ -11,6 +11,7 @@ macro_rules! sort_name {
     };
 }
 
+mod sort_chunk;
 mod sort_insertion;
 mod sort_k_chunk;
 mod sort_quick2;
@@ -28,6 +29,7 @@ mod turk_common;
 #[cfg(test)]
 mod test_utils;
 
+pub use sort_chunk::sort_chunk;
 pub use sort_insertion::sort_insertion;
 pub use sort_k_chunk::sort_k_chunk;
 pub use sort_quick2::sort_quick2;
@@ -48,6 +50,7 @@ use std::fmt;
 pub enum Algorithm {
     Selection,
     Insertion,
+    Chunk,
     KSort,
     Turk,
     Turk3,
@@ -70,6 +73,7 @@ impl Algorithm {
     pub const ALL: &[Algorithm] = &[
         Algorithm::Selection,
         Algorithm::Insertion,
+        Algorithm::Chunk,
         Algorithm::KSort,
         Algorithm::Turk,
         Algorithm::Turk3,
@@ -86,6 +90,7 @@ impl Algorithm {
         match self {
             Algorithm::Selection => sort_selection::name(),
             Algorithm::Insertion => sort_insertion::name(),
+            Algorithm::Chunk => sort_chunk::name(),
             Algorithm::KSort => sort_k_chunk::name(),
             Algorithm::Turk => sort_turk::name(),
             Algorithm::Turk3 => sort_turk3::name(),
@@ -107,6 +112,7 @@ impl Algorithm {
         match self {
             Algorithm::Selection => sort_selection,
             Algorithm::Insertion => sort_insertion,
+            Algorithm::Chunk => sort_chunk,
             Algorithm::KSort => sort_k_chunk,
             Algorithm::Turk => sort_turk,
             Algorithm::Turk3 => sort_turk3,

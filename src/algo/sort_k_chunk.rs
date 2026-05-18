@@ -1,8 +1,26 @@
+//! K-chunk sort: chunk sort with a "K shape" on B.
+//!
+//! Same skeleton as `sort_chunk` (sqrt-sized rank buckets, then max-to-top
+//! back-push), with one twist on the forward pass: when the top of A holds a
+//! value below the bucket currently being processed (i.e. a value already
+//! `pb`'d in a *prior* bucket would have been a candidate, but here we use
+//! a running `pushed` watermark), we `pb` *then* `rb`. That shoves the
+//! "already-handled low values" to the bottom of B so the current bucket's
+//! values stack on top.
+//!
+//! Visualised, B grows as a K: bucket 0 at the bottom, bucket 1 layered above,
+//! …, current bucket at the top. Result: when the back-push phase begins, B
+//! is already roughly ordered by chunk, so the max-to-top pulls travel
+//! shorter distances on average than in vanilla `sort_chunk`.
+//!
+//! Chunk width is `sqrt(n) * 1.4` (empirical sweet spot — slightly wider
+//! buckets reduce the number of forward passes without bloating back-push
+//! rotation distance).
+
 use crate::stacks::{Operation, RotateExt, StackExt, StackPair};
 
 sort_name!();
 
-/// K-chunk sort: split into sqrt-sized ranges, push to B, pop max back.
 pub fn sort_k_chunk(stacks: &mut StackPair) {
     push_chunks_to_b(stacks);
     push_back_to_a(stacks);

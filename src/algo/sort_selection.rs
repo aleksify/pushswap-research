@@ -1,10 +1,20 @@
+//! Selection sort.
+//!
+//! Each iteration: find min of A (linear scan), rotate it to A's top via the
+//! shorter of `ra`/`rra`, then `pb` it. Repeat until 3 items remain, finish
+//! with `sort_three`, then `pa` back all `n-3` items from B (which sit
+//! ascending top-down because they were `pb`'d smallest-first).
+//!
+//! O(n²) ops (linear scan per iteration × n iterations). Beats `sort_bubble`
+//! because rotations use shortest direction, but loses to every chunk/turk
+//! variant for n > ~10.
+
 use crate::stacks::{Operation, RotateExt, StackExt, StackPair};
 
 use super::sort_three::sort_three;
 
 sort_name!();
 
-/// Selection sort: push smallest to B one by one, sort_three remainder, push back.
 pub fn sort_selection(stacks: &mut StackPair) {
     if stacks.a().len() <= 3 {
         sort_three(stacks);
