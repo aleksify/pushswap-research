@@ -62,6 +62,22 @@
 //! `src/optimizer.rs` does both plus commutative reordering across stacks
 //! and superoptimizer-derived multi-op rewrites. Emitting raw single-stack
 //! ops here lets the optimizer cut ~10% of the op stream post-hoc.
+//!
+//! # See also: relationship to `sort_turk3`
+//!
+//! quick3's top-level `chunk_split` from `TopA` emits exactly the same ops
+//! as `sort_turk3`'s one-shot triage. Mapping:
+//!
+//! | quick3 dest (via `split_locs(TopA)`) | turk3 rank-third | Ops    |
+//! |---------------------------------------|------------------|--------|
+//! | max → BottomA                         | top  → `ra`      | `Ra`   |
+//! | mid → TopB                            | mid  → `pb`      | `Pb`   |
+//! | min → BottomB                         | bot  → `pb rb`   | `Pb,Rb`|
+//!
+//! Conceptually: **quick3 = turk3 applied recursively**. After the first
+//! split, turk3 stops and uses a cost-based back-push (`pull_cheapest`) to
+//! drain B; quick3 instead recurses into each sub-bucket with location-aware
+//! `move_from_to` routing, sorting all the way down to base cases.
 
 use crate::stacks::{Operation, StackPair};
 
