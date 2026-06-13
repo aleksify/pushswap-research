@@ -8,6 +8,7 @@ I wanted to push further. The journey went roughly like this:
 2. **A peephole optimizer.** Some algorithms emit sequences with local redundancies - `ra` followed by `rra` cancels out, `ra` followed by `rb` can collapse to `rr`, etc. I wrote a peephole optimizer that post-processes the output, rewriting these patterns away. The first version used a handful of hand-written rules.
 3. **A superoptimizer to generate the rules.** Hand-writing rewrite rules is tedious and incomplete — you'll always miss patterns. So I built a superoptimizer: an exhaustive BFS search over the state space of stack configurations that discovers every reducible operation sequence up to a given depth. The optimizer's rule table is generated at build time from this search.
 4. **Hit the scaling wall.** Past a certain depth, the rule count and binary size explode while the actual gains diminish. This led to thinking about algorithm-specific optimization rather than universal rules — see [Current Issues](#current-issues).
+5. **How low can it go?** Setting solver-building aside, I worked out the information-theoretic floor — the fewest operations *any* algorithm could use on a random input, derived from the effective branching factor of the operation set. See [Theoretical Minimum](#theoretical-minimum).
 
 Table of Contents
 =================
@@ -18,6 +19,7 @@ Table of Contents
 * [Superoptimizer](#superoptimizer)
 * [Current Issues](#current-issues)
 * [More Thoughts](#more-thoughts)
+* [Theoretical Minimum](#theoretical-minimum)
 * [How to build](#how-to-build)
 
 ## How to run
@@ -119,6 +121,46 @@ A workable fitness function would need to model the *structure* of a valid sort,
 - **Value-aware decomposition**: Allow B to be "sorted descending" and A to be "sorted ascending" — measure inversions within each, but treat the split itself as free. Penalize only when values are in the wrong stack *and* in the wrong relative order.
 - **Distance to a reachable canonical**: Precompute (via superoptimizer-style BFS) the shortest path from any small state to the sorted goal, and use that as a learned distance metric for larger states.
 - **Learned fitness**: Let the RL agent learn its own value function from terminal rewards alone (AlphaZero-style). This avoids hand-designing fitness but pays the cost of a much harder training problem.
+
+## Theoretical Minimum
+
+A natural question: forget clever algorithms — what's the *fewest* operations *any* solver could use on a random input? For n=500 there's a hard floor no algorithm can beat, and it comes from information theory. It holds not just in the worst case but for *almost every* input: a random 500-permutation sits above the floor with probability → 1.
+
+**The counting argument.** The 11 operations are *value-blind* — they move elements by position, never looking at the values. So a fixed sequence of operations performs the same positional shuffle on any input, which means **each sequence sorts exactly one of the `500!` possible orderings**. To handle every input, a solver needs `500!` distinct sequences. There are `log₂(500!) ≈ 3767 bits` of "which permutation is this?" to resolve, and each operation resolves at most `log₂(b)` bits, where `b` is the *effective branching factor* — so the minimum length is `≥ log_b(500!)`.
+
+**The branching factor isn't 11.** Naively each step has 11 choices, but many are redundant. Two distinct effects shrink the real number:
+
+- **Cancellations and merges** (*length-reducing*): `ra` then `rra` undoes itself; `ra` then `rb` collapses to `rr`. A shortest solution never contains these. Counting only the sequences that avoid them gives the **word growth**, ω ≈ 7.8.
+- **Equal-length confluences**: different sequences of the *same* length can reach an *identical* state — e.g. `ra rb` and `rb ra`, since the two stacks are independent. These shorten nothing, so the superoptimizer's normal reduction rules are blind to them. Capturing them required extending `src/bin/superopt.rs` to record same-length collisions, not just reductions. Folding them in gives the **state growth**, b\* ≈ 4.9 — and the gap ω/b\* ≈ 1.6 is the average number of distinct shortest paths per state.
+
+**Measuring b\*.** The superoptimizer's BFS already enumerates the reachable-state graph, so we can just count the *new* states first reached at each depth `d` (the "sphere size"); the ratio between consecutive depths approaches b\*:
+
+| depth d | new states | ratio |
+|---:|---:|---:|
+| 3 | 513 | 6.26 |
+| 4 | 2 922 | 5.70 |
+| 5 | 15 668 | 5.36 |
+| 6 | 79 804 | 5.09 |
+| 7 | 393 291 | 4.93 |
+| 8 | 1 885 756 | **4.79** |
+
+(These come from `make superopt N=8`.) The ratio is still descending; extrapolation puts the true b\* ≈ 4.4–4.5. For a *rigorous* number, the ~116,000 forbidden patterns found up to length 8 (reductions + equal-length collisions) define a constrained set of allowed sequences whose growth rate is the largest eigenvalue of a transfer matrix — at depth 8 that eigenvalue is **4.894**, a proven upper bound on b\*. As a sanity check, a model built from those patterns reproduces the sphere sizes above *exactly*, so it isn't fitted.
+
+Each layer of structure peels the branching down — and raises the floor:
+
+| Effective branching b | accounts for | floor `L ≥ log_b(500!)` |
+|---|---|---:|
+| 11 | nothing (naive) | 1089 |
+| 10.110 | A ∥ B commutation only | 1129 |
+| 7.823 | + cancellations / merges (word growth) | 1270 |
+| **4.894** | **+ equal-length confluences (state growth)** | **1644** |
+| ~4.45 | extrapolated true b\* | ~1750 |
+
+The commutation-only row has a clean closed form. The A-operations `{sa, ra, rra}` and B-operations `{sb, rb, rrb}` commute (they touch independent stacks), forming a [trace monoid](https://en.wikipedia.org/wiki/Trace_monoid) whose growth rate is `1/r`, where `r` is the smallest root of the *clique polynomial* `μ(t) = 1 − 11t + 9t²` — giving `(11 + √85) / 2 ≈ 10.11`.
+
+**The result.** **No solver can sort a random 500-stack in fewer than ~1644 operations** (rigorous), with the true floor near **~1750**. An independent argument agrees on the order of magnitude: every element pushed to B must come back (≥ 2 ops each), and at most the longest increasing subsequence — about `2√500 ≈ 45` elements — can stay in A, which alone forces ≥ ~900 push operations.
+
+Good algorithms here land at ~4000–5500, roughly 2.5–3× above the floor. That gap isn't pure waste: the counting bound measures *information* — how many distinct states exist, the graph's **volume** — while the real cost is *geometric*: how far you must rotate each element into place, the graph's **diameter**. The counting bound can't see diameter, and closing that gap is a harder, open problem.
 
 ## How to build
 
