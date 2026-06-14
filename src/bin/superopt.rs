@@ -79,6 +79,11 @@ impl ReducibleSet {
 struct Rules {
     reductions: Vec<(Vec<Operation>, Vec<Operation>)>,
     annihilators: Vec<Vec<Operation>>,
+    /// Equal-length confluences: `from` reaches the same state as the
+    /// canonical `to` in the same number of ops. These are NOT length
+    /// reductions; they capture which distinct geodesics collapse to one
+    /// state (e.g. cross-stack commutations like `ra rb` == `rb ra`).
+    equivalences: Vec<(Vec<Operation>, Vec<Operation>)>,
 }
 
 impl Rules {
@@ -86,6 +91,7 @@ impl Rules {
         Self {
             reductions: Vec::new(),
             annihilators: Vec::new(),
+            equivalences: Vec::new(),
         }
     }
 }
@@ -117,6 +123,7 @@ fn rebuild_frontier(
 /// BFS search from `start_depth` through `max_depth`.
 /// Expands frontier level by level, discovering reduction rules and
 /// populating the oracle. Saves cache after each depth.
+#[allow(clippy::too_many_arguments)]
 fn search_bfs(
     max_depth: usize,
     start_depth: usize,
@@ -125,6 +132,7 @@ fn search_bfs(
     oracle: &mut HashMap<State, Vec<Operation>>,
     rules: &mut Rules,
     reducible: &mut ReducibleSet,
+    record_equivalences: bool,
 ) {
     // Build frontier: states from previous depth level
     let mut frontier = if start_depth == 1 {
@@ -135,6 +143,7 @@ fn search_bfs(
 
     for depth in start_depth..=max_depth {
         let reds_before = rules.reductions.len() + rules.annihilators.len();
+        let eqs_before = rules.equivalences.len();
         eprintln!(
             "Depth {depth}: searching (oracle size: {}, frontier: {})...",
             oracle.len(),
@@ -166,6 +175,17 @@ fn search_bfs(
                             rules.reductions.push((new_ops.clone(), existing.clone()));
                         }
                         new_reducible.push(new_ops);
+                    } else if record_equivalences
+                        && existing.len() == new_ops.len()
+                        && *existing != new_ops
+                    {
+                        // Equal-length confluence: `new_ops` reaches the same
+                        // state as the canonical (first-discovered) `existing`
+                        // in the same op count. Record it and forbid the
+                        // non-canonical word, so surviving reduced words
+                        // biject with distinct states (canonical normal form).
+                        rules.equivalences.push((new_ops.clone(), existing.clone()));
+                        new_reducible.push(new_ops);
                     }
                 } else {
                     oracle.insert(state, new_ops.clone());
@@ -179,8 +199,9 @@ fn search_bfs(
         }
 
         let new_reds = (rules.reductions.len() + rules.annihilators.len()) - reds_before;
+        let new_eqs = rules.equivalences.len() - eqs_before;
         eprintln!(
-            "Depth {depth}: done. +{new_reds} reductions, oracle size: {}",
+            "Depth {depth}: done. +{new_reds} reductions, +{new_eqs} equivalences, oracle size: {}",
             oracle.len()
         );
 
@@ -261,6 +282,10 @@ struct CacheData {
     oracle: Vec<OracleEntry>,
     reductions: Vec<(Vec<String>, Vec<String>)>,
     annihilators: Vec<Vec<String>>,
+    /// Equal-length confluences (see `Rules::equivalences`). Defaulted so
+    /// caches written before this field still load.
+    #[serde(default)]
+    equivalences: Vec<(Vec<String>, Vec<String>)>,
 }
 
 fn ops_to_strings(ops: &[Operation]) -> Vec<String> {
@@ -298,6 +323,11 @@ fn save_cache(n: usize, max_depth: usize, oracle: &HashMap<State, Vec<Operation>
             .iter()
             .map(|seq| ops_to_strings(seq))
             .collect(),
+        equivalences: rules
+            .equivalences
+            .iter()
+            .map(|(from, to)| (ops_to_strings(from), ops_to_strings(to)))
+            .collect(),
     };
 
     let json = serde_json::to_string(&data).expect("failed to serialize cache");
@@ -328,14 +358,23 @@ fn rebuild_from_cache(cache: &CacheData) -> (HashMap<State, Vec<Operation>>, Rul
     for seq in &cache.annihilators {
         rules.annihilators.push(strings_to_ops(seq));
     }
+    for (from, to) in &cache.equivalences {
+        rules
+            .equivalences
+            .push((strings_to_ops(from), strings_to_ops(to)));
+    }
 
-    // Rebuild reducible set from known reductions + annihilators
+    // Rebuild reducible set from known reductions + annihilators + equivalences
+    // (the search forbids the non-canonical side of each, so resume must too).
     let mut reducible = ReducibleSet::new();
     for (from, _) in &rules.reductions {
         reducible.add(from);
     }
     for seq in &rules.annihilators {
         reducible.add(seq);
+    }
+    for (from, _) in &rules.equivalences {
+        reducible.add(from);
     }
 
     (oracle, rules, reducible)
@@ -370,11 +409,17 @@ fn print_rules(rules: &Rules) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: superopt <max_depth>");
+    // `--equivalences` enables research-only recording of equal-length
+    // confluences. The peephole optimizer only consumes reductions +
+    // annihilators, so the default build path skips them to keep the
+    // generated cache lean (see Rules::equivalences).
+    let record_equivalences = args.iter().any(|a| a == "--equivalences");
+    let positional: Vec<&String> = args[1..].iter().filter(|a| !a.starts_with("--")).collect();
+    if positional.len() != 1 {
+        eprintln!("Usage: superopt <max_depth> [--equivalences]");
         std::process::exit(1);
     }
-    let n: usize = args[1].parse().unwrap_or_else(|_| {
+    let n: usize = positional[0].parse().unwrap_or_else(|_| {
         eprintln!("Error: max_depth must be a positive integer");
         std::process::exit(1);
     });
@@ -426,6 +471,7 @@ fn main() {
         &mut oracle,
         &mut rules,
         &mut reducible,
+        record_equivalences,
     );
 
     // Fuzz-verify all rules, drop failures
@@ -437,6 +483,13 @@ fn main() {
     eprintln!("Verifying {} annihilators...", rules.annihilators.len());
     rules.annihilators.retain(|seq| verify_rule(seq, &[], n));
 
+    if record_equivalences {
+        eprintln!("Verifying {} equivalences...", rules.equivalences.len());
+        rules
+            .equivalences
+            .retain(|(from, to)| verify_rule(from, to, n));
+    }
+
     // Save verified rules
     save_cache(sz, n, &oracle, &rules);
 
@@ -444,9 +497,10 @@ fn main() {
         print_rules(&rules);
     } else {
         eprintln!(
-            "Done. {} reductions, {} annihilators. Saved to {CACHE_FILE}.",
+            "Done. {} reductions, {} annihilators, {} equivalences. Saved to {CACHE_FILE}.",
             rules.reductions.len(),
-            rules.annihilators.len()
+            rules.annihilators.len(),
+            rules.equivalences.len()
         );
     }
 }

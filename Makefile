@@ -4,7 +4,7 @@ N		?= 2 #For superopt
 # Default target
 .DEFAULT_GOAL := help
 
-.PHONY: all build test fmt lint clean fclean release superopt help
+.PHONY: all build test fmt lint clean fclean release superopt superopt-research help
 
 all: fmt lint test build ## Run formatting, linting, tests, and build the project
 
@@ -35,6 +35,9 @@ release: ## Build the project in release mode (optimized)  and copy to root
 
 superopt: ## Build and run the superopt binary in release mode, use: make superopt N=5
 	$(CARGO) run --bin superopt --release -- $(N)
+
+superopt-research: ## Run superopt with equal-length confluence tables (research only, not used by the binary)
+	$(CARGO) run --bin superopt --release -- $(N) --equivalences
 
 clean-cache: ## Replace the current superopt cache with an empty file
 	echo "{}" > superopt_cache.json
