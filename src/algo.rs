@@ -11,6 +11,7 @@ macro_rules! sort_name {
     };
 }
 
+mod sort_bfs;
 mod sort_chunk;
 mod sort_insertion;
 mod sort_k_chunk;
@@ -29,6 +30,7 @@ mod sort_turk_lis_chunk;
 mod test_utils;
 mod turk_common;
 
+pub use sort_bfs::sort_bfs;
 pub use sort_chunk::sort_chunk;
 pub use sort_insertion::sort_insertion;
 pub use sort_k_chunk::sort_k_chunk;
@@ -46,8 +48,14 @@ pub use sort_turk3::sort_turk3;
 use crate::stacks::StackPair;
 use std::fmt;
 
+/// Largest `n` for which the exact BFS solver is used. BFS may visit up to
+/// `(n+1)·n!` states, so this is capped to keep a single solve well under a
+/// second (see `sort_bfs`). Above it, the Turk-family heuristics take over.
+pub const BFS_LIMIT: usize = 9;
+
 #[derive(Debug, Clone, Copy)]
 pub enum Algorithm {
+    Bfs,
     Selection,
     Insertion,
     Chunk,
@@ -88,6 +96,7 @@ impl Algorithm {
 
     pub fn name(self) -> &'static str {
         match self {
+            Algorithm::Bfs => sort_bfs::name(),
             Algorithm::Selection => sort_selection::name(),
             Algorithm::Insertion => sort_insertion::name(),
             Algorithm::Chunk => sort_chunk::name(),
@@ -105,11 +114,15 @@ impl Algorithm {
     }
 
     pub fn from_name(name: &str) -> Option<Algorithm> {
+        if name == Algorithm::Bfs.name() {
+            return Some(Algorithm::Bfs);
+        }
         Self::ALL.iter().find(|a| a.name() == name).copied()
     }
 
     pub fn sort(self) -> fn(&mut StackPair) {
         match self {
+            Algorithm::Bfs => sort_bfs,
             Algorithm::Selection => sort_selection,
             Algorithm::Insertion => sort_insertion,
             Algorithm::Chunk => sort_chunk,

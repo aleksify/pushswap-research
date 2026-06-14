@@ -1,4 +1,4 @@
-use push_swap::algo::Algorithm;
+use push_swap::algo::{Algorithm, BFS_LIMIT};
 use push_swap::optimizer;
 use push_swap::stacks::StackPair;
 use push_swap::{bench, bench_all, disorder, parse_values, process_and_rank};
@@ -35,7 +35,8 @@ fn parse_args() -> Config {
                         algo = Some(a);
                     }
                     None => {
-                        let names: Vec<_> = Algorithm::ALL.iter().map(|a| a.name()).collect();
+                        let mut names = vec![Algorithm::Bfs.name()];
+                        names.extend(Algorithm::ALL.iter().map(|a| a.name()));
                         eprintln!(
                             "Error: Unknown flag '{other}'. Available: {}, bench, no-opt",
                             names.join(", ")
@@ -72,6 +73,10 @@ fn main() {
     let mut stacks = StackPair::new(ranked.clone());
 
     if let Some(algo) = config.algo {
+        if matches!(algo, Algorithm::Bfs) && ranked.len() > BFS_LIMIT {
+            eprintln!("Error: --bfs only supports n <= {BFS_LIMIT}");
+            process::exit(1);
+        }
         algo.sort()(&mut stacks);
         let pre_opt = stacks.total_ops();
         if !config.no_opt {
@@ -87,9 +92,13 @@ fn main() {
         }
     } else {
         let no_opt = config.no_opt;
-        let handles: Vec<_> = Algorithm::ALL
-            .iter()
-            .map(|&algo| {
+        let mut algos = Algorithm::ALL.to_vec();
+        if ranked.len() <= BFS_LIMIT {
+            algos.push(Algorithm::Bfs);
+        }
+        let handles: Vec<_> = algos
+            .into_iter()
+            .map(|algo| {
                 let mut s = stacks.clone();
                 thread::spawn(move || {
                     algo.sort()(&mut s);
