@@ -8,7 +8,7 @@ I wanted to push further. The journey went roughly like this:
 2. **A peephole optimizer.** Some algorithms emit sequences with local redundancies - `ra` followed by `rra` cancels out, `ra` followed by `rb` can collapse to `rr`, etc. I wrote a peephole optimizer that post-processes the output, rewriting these patterns away. The first version used a handful of hand-written rules.
 3. **A superoptimizer to generate the rules.** Hand-writing rewrite rules is tedious and incomplete — you'll always miss patterns. So I built a superoptimizer: an exhaustive BFS search over the state space of stack configurations that discovers every reducible operation sequence up to a given depth. The optimizer's rule table is generated at build time from this search.
 4. **Hit the scaling wall.** Past a certain depth, the rule count and binary size explode while the actual gains diminish. This led to thinking about algorithm-specific optimization rather than universal rules — see [Current Issues](#current-issues).
-5. **How low can it go?** Setting solver-building aside, I worked out the information-theoretic floor — the fewest operations *any* algorithm could use on a random input, derived from the effective branching factor of the operation set. See [Theoretical Minimum](#theoretical-minimum).
+5. **How low can it go?** Setting solver-building aside, I derived the information-theoretic floor — the fewest operations *any* algorithm could use on a random input — from the effective branching factor of the operation set, then pinned the *true* optimum with exact exhaustive search. See [Theoretical Minimum](#theoretical-minimum).
 
 Table of Contents
 =================
@@ -154,13 +154,26 @@ Each layer of structure peels the branching down — and raises the floor:
 | 10.110 | A ∥ B commutation only | 1129 |
 | 7.823 | + cancellations / merges (word growth) | 1270 |
 | **4.894** | **+ equal-length confluences (state growth)** | **1644** |
-| ~4.45 | extrapolated true b\* | ~1750 |
+| ~4.45 | extrapolated state-growth b\* | ~1750 |
 
 The commutation-only row has a clean closed form. The A-operations `{sa, ra, rra}` and B-operations `{sb, rb, rrb}` commute (they touch independent stacks), forming a [trace monoid](https://en.wikipedia.org/wiki/Trace_monoid) whose growth rate is `1/r`, where `r` is the smallest root of the *clique polynomial* `μ(t) = 1 − 11t + 9t²` — giving `(11 + √85) / 2 ≈ 10.11`.
 
-**The result.** **No solver can sort a random 500-stack in fewer than ~1644 operations** (rigorous), with the true floor near **~1750**. An independent argument agrees on the order of magnitude: every element pushed to B must come back (≥ 2 ops each), and at most the longest increasing subsequence — about `2√500 ≈ 45` elements — can stay in A, which alone forces ≥ ~900 push operations.
+**The floor.** **No solver can sort a random 500-stack in fewer than ~1644 operations** — a hard, rigorous lower bound (extrapolating the state-growth rate gives a similar counting estimate, ~1750). A complementary argument agrees on the order of magnitude: every element pushed to B must come back (≥ 2 ops each), and only one already-increasing run — about `2√500 ≈ 45` elements — can stay put in A, which alone forces ≥ ~900 operations.
 
-Good algorithms here land at ~4000–5500, roughly 2.5–3× above the floor. That gap isn't pure waste: the counting bound measures *information* — how many distinct states exist, the graph's **volume** — while the real cost is *geometric*: how far you must rotate each element into place, the graph's **diameter**. The counting bound can't see diameter, and closing that gap is a harder, open problem.
+**But how tight is that floor? Exact search settles it.** A counting bound is only a *lower* bound — it never says how close the *real* optimum lies. To find out, I built an exact solver (`src/bin/exact_bfs.rs`). The trick: every operation has a single-operation inverse (`sa⁻¹ = sa`, `pa⁻¹ = pb`, `ra⁻¹ = rra`, …), so the graph of configurations is **undirected**. A single breadth-first search from the sorted state therefore labels every one of the `(n+1)·n!` configurations with its *exact* optimal solve length at once — true ground truth, no heuristics. This is feasible up to **n = 11** (479 million configurations; an independent reimplementation reproduces every number).
+
+The result is stable across the whole range: the typical optimal length tracks `≈ 1.07 · ln(n!)`, an *achieved* effective base `b_eff = (n!)^{1/L} ≈ 2.55` — far below the counting bound's 4.894, and barely moving:
+
+| n | exact typical optimal | ln(n!) | b_eff |
+|---:|---:|---:|---:|
+| 8 | 11.6 | 10.6 | 2.50 |
+| 9 | 13.9 | 12.8 | 2.51 |
+| 10 | 16.3 | 15.1 | 2.53 |
+| 11 | 18.7 | 17.5 | 2.55 |
+
+Extrapolating `b_eff ≈ 2.55` to n=500 puts the **true typical optimum at ~2700 operations**. So the rigorous floor, though unbeatable, is about **1.6× loose**.
+
+**Why the floor can't be tightened.** The counting bound measures *information* — how many distinct states exist within `L` steps, the graph's **volume**. But a random permutation sits far out near the graph's **diameter**, long past the radius where that volume already exceeds `500!`. No matter how carefully `b*` is estimated, the counting method tops out near ~1644; the extra distance to ~2700 is pure geometry, which only exhaustive search can measure. Good algorithms land at ~4000–5500 — now only ~1.5–2× above the true optimum, not the ~2.5× the floor alone suggested.
 
 ## How to build
 
