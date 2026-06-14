@@ -126,6 +126,12 @@ A workable fitness function would need to model the *structure* of a valid sort,
 
 A natural question: forget clever algorithms — what's the *fewest* operations *any* solver could use on a random input? For n=500 there's a hard floor no algorithm can beat, and it comes from information theory. It holds not just in the worst case but for *almost every* input: a random 500-permutation sits above the floor with probability → 1.
 
+The whole story in one chart — each kind of redundancy we account for lowers the branching factor `b` and raises the floor, and exhaustive search then shows how far the *real* optimum sits above it:
+
+![The floor ladder: from the naive 1089 up to the rigorous 1644, the true optimum ~2700, and what real algorithms achieve](docs/img/floor-hierarchy.png)
+
+The rest of this section explains where those numbers come from.
+
 **The counting argument.** The 11 operations are *value-blind* — they move elements by position, never looking at the values. So a fixed sequence of operations performs the same positional shuffle on any input, which means **each sequence sorts exactly one of the `500!` possible orderings**. To handle every input, a solver needs `500!` distinct sequences. There are `log₂(500!) ≈ 3767 bits` of "which permutation is this?" to resolve, and each operation resolves at most `log₂(b)` bits, where `b` is the *effective branching factor* — so the minimum length is `≥ log_b(500!)`.
 
 **The branching factor isn't 11.** Naively each step has 11 choices, but many are redundant. Two distinct effects shrink the real number:
@@ -133,28 +139,13 @@ A natural question: forget clever algorithms — what's the *fewest* operations 
 - **Cancellations and merges** (*length-reducing*): `ra` then `rra` undoes itself; `ra` then `rb` collapses to `rr`. A shortest solution never contains these. Counting only the sequences that avoid them gives the **word growth**, ω ≈ 7.8.
 - **Equal-length confluences**: different sequences of the *same* length can reach an *identical* state — e.g. `ra rb` and `rb ra`, since the two stacks are independent. These shorten nothing, so the superoptimizer's normal reduction rules are blind to them. Capturing them required extending `src/bin/superopt.rs` to record same-length collisions, not just reductions. Folding them in gives the **state growth**, b\* ≈ 4.9 — and the gap ω/b\* ≈ 1.6 is the average number of distinct shortest paths per state.
 
-**Measuring b\*.** The superoptimizer's BFS already enumerates the reachable-state graph, so we can just count the *new* states first reached at each depth `d` (the "sphere size"); the ratio between consecutive depths approaches b\*:
+**Measuring b\*.** The superoptimizer's BFS already enumerates the reachable-state graph, so we can just count the *new* states first reached at each depth `d` (the "sphere size"); the ratio between consecutive depths *is* `b` — and it starts near 11, then collapses toward ~5:
 
-| depth d | new states | ratio |
-|---:|---:|---:|
-| 3 | 513 | 6.26 |
-| 4 | 2 922 | 5.70 |
-| 5 | 15 668 | 5.36 |
-| 6 | 79 804 | 5.09 |
-| 7 | 393 291 | 4.93 |
-| 8 | 1 885 756 | **4.79** |
+![Sphere-size ratio falling from 6.26 at depth 3 toward 4.79 at depth 8, well below the naive 11](docs/img/branching-bstar.png)
 
-(These come from `make superopt N=8`.) The ratio is still descending; extrapolation puts the true b\* ≈ 4.4–4.5. For a *rigorous* number, the ~116,000 forbidden patterns found up to length 8 (reductions + equal-length collisions) define a constrained set of allowed sequences whose growth rate is the largest eigenvalue of a transfer matrix — at depth 8 that eigenvalue is **4.894**, a proven upper bound on b\*. As a sanity check, a model built from those patterns reproduces the sphere sizes above *exactly*, so it isn't fitted.
+*(Sphere sizes measured with `make superopt N=8`.)* The ratio is still descending; extrapolation puts the true b\* ≈ 4.4–4.5. For a *rigorous* number, the ~116,000 forbidden patterns found up to length 8 (reductions + equal-length collisions) define a constrained set of allowed sequences whose growth rate is the largest eigenvalue of a transfer matrix — at depth 8 that eigenvalue is **4.894**, a proven upper bound on b\*. As a sanity check, a model built from those patterns reproduces the sphere sizes above *exactly*, so it isn't fitted.
 
-Each layer of structure peels the branching down — and raises the floor:
-
-| Effective branching b | accounts for | floor `L ≥ log_b(500!)` |
-|---|---|---:|
-| 11 | nothing (naive) | 1089 |
-| 10.110 | A ∥ B commutation only | 1129 |
-| 7.823 | + cancellations / merges (word growth) | 1270 |
-| **4.894** | **+ equal-length confluences (state growth)** | **1644** |
-| ~4.45 | extrapolated state-growth b\* | ~1750 |
+Each layer of structure peels the branching down and raises the floor `log_b(500!)` — the ladder in the chart at the top of this section: naive **11 → 1089**, then A∥B commutation alone **10.110 → 1129**, plus cancellations/merges **7.823 → 1270**, and plus equal-length confluences **4.894 → 1644** (the rigorous floor). The extrapolated b\* ≈ 4.45 nudges that estimate to ~1750.
 
 The commutation-only row has a clean closed form. The A-operations `{sa, ra, rra}` and B-operations `{sb, rb, rrb}` commute (they touch independent stacks), forming a [trace monoid](https://en.wikipedia.org/wiki/Trace_monoid) whose growth rate is `1/r`, where `r` is the smallest root of the *clique polynomial* `μ(t) = 1 − 11t + 9t²` — giving `(11 + √85) / 2 ≈ 10.11`.
 
@@ -164,16 +155,17 @@ The commutation-only row has a clean closed form. The A-operations `{sa, ra, rra
 
 The result is stable across the whole range: the typical optimal length tracks `≈ 1.07 · ln(n!)`, an *achieved* effective base `b_eff = (n!)^{1/L} ≈ 2.55` — far below the counting bound's 4.894, and barely moving:
 
-| n | exact typical optimal | ln(n!) | b_eff |
-|---:|---:|---:|---:|
-| 8 | 11.6 | 10.6 | 2.50 |
-| 9 | 13.9 | 12.8 | 2.51 |
-| 10 | 16.3 | 15.1 | 2.53 |
-| 11 | 18.7 | 17.5 | 2.55 |
+![Left: worst-case and typical optimal vs the rigorous floor for n≤11, a ~1.7× gap. Right: the achieved base b_eff ≈ 2.55, flat and far below the bound's 4.894](docs/img/exact-tightness.png)
 
-Extrapolating `b_eff ≈ 2.55` to n=500 puts the **true typical optimum at ~2700 operations**. So the rigorous floor, though unbeatable, is about **1.6× loose**.
+Extrapolating `b_eff ≈ 2.55` to n=500 puts the **true typical optimum near ~2700 operations** — so at the sizes we can verify, the rigorous floor, though unbeatable, runs about **1.6–1.7× loose** (but see the caveat below on trusting that jump to n=500).
 
-**Why the floor can't be tightened.** The counting bound measures *information* — how many distinct states exist within `L` steps, the graph's **volume**. But a random permutation sits far out near the graph's **diameter**, long past the radius where that volume already exceeds `500!`. No matter how carefully `b*` is estimated, the counting method tops out near ~1644; the extra distance to ~2700 is pure geometry, which only exhaustive search can measure. Good algorithms land at ~4000–5500 — now only ~1.5–2× above the true optimum, not the ~2.5× the floor alone suggested.
+**Why the floor can't be tightened.** The counting bound measures *information* — how many distinct states exist within `L` steps, the graph's **volume**. But a random permutation sits far out near the graph's **diameter**, long past the radius where that volume already exceeds `500!`. The exact n=11 data makes the gap concrete:
+
+![Optimal-length distribution over all 11! inputs clusters around 18–20, while the counting volume already saturates back at distance 14](docs/img/volume-vs-diameter.png)
+
+Counting "fills up" at distance 14 (enough states exist to label every input), yet the inputs themselves average ~18.7 — that gap is pure geometry. No matter how carefully `b*` is estimated, the counting method tops out near ~1644; the extra distance to ~2700 is pure geometry, which only exhaustive search can measure. Good algorithms land at ~4000–5500 — now only ~1.5–2× above the true optimum, not the ~2.5× the floor alone suggested.
+
+**How solid is the ~2700?** Far less than the floor — it's the one soft number here. The 1644 floor is *proven* and holds at every n we measured; ~2700 is a **45× extrapolation** (n=11 → n=500) from a phenomenological fit, so read it as a ballpark, not a precise figure. The main flaw: `b_eff` isn't actually flat — it drifts *upward* (2.50 → 2.55 across n=8→11) and its limit is unknown. There's a real possibility it keeps climbing toward the counting-bound b\* (~4.4–4.9) as the small-n boundary effects fade, in which case the true optimum sits *below* 2700 — perhaps much closer to the floor, making the bound nearly tight. We have no *derived* scaling law, only a fit over a tiny window where the problem's geometry is still changing, so neither the `L ≈ 1.07·ln(n!)` rule nor the ~1.7× looseness is guaranteed to survive to n=500. Honest range: the true n=500 optimum is at least the proven floor (~1644) and probably under ~2900, with ~2700 a best guess that the upward drift hints is high. Pinning it down means pushing exact search past n=11 — feasible to about n=14–16 by sampling random instances and meeting in the middle, but out of reach at 500.
 
 ## How to build
 
