@@ -3,9 +3,7 @@
 use crate::stacks::{Operation, StackPair};
 
 use super::sort_three::sort_three;
-use super::turk_common::{
-    is_circularly_sorted, pull_cheapest, push_cheapest, rotate_min_to_top,
-};
+use super::turk_common::{is_circularly_sorted, pull_cheapest, push_cheapest, rotate_min_to_top};
 
 sort_name!();
 

@@ -18,6 +18,7 @@
 //!    - A[0] ≥ median → `pb` (lands at top of B → "upper half" layer).
 //!    - A[0] <  median → `pb` then `rb` (shoved to bottom of B → "lower half"
 //!      layer).
+//!
 //!    Result: B has its high-value half near the top and low-value half near
 //!    the bottom, with values interleaved within each half. The cost-based
 //!    back-push finds short rotations into A because the right half of B is
