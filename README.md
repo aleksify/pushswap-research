@@ -10,6 +10,10 @@ I wanted to push further. The journey went roughly like this:
 4. **Hit the scaling wall.** Past a certain depth, the rule count and binary size explode while the actual gains diminish. This led to thinking about algorithm-specific optimization rather than universal rules — see [Current Issues](#current-issues).
 5. **How low can it go?** Setting solver-building aside, I derived the information-theoretic floor — the fewest operations *any* algorithm could use on a random input — from the effective branching factor of the operation set, then pinned the *true* optimum with exact exhaustive search. See [Theoretical Minimum](#theoretical-minimum).
 
+Potential for further research:
+- behavior at each disorder level, in particular how efficiency of superoptimizer changes
+- n > 500
+
 Table of Contents
 =================
 
