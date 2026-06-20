@@ -18,18 +18,14 @@ pub fn disorder(slice: &[usize]) -> f64 {
     inversions as f64 / total_pairs
 }
 
-pub fn bench_all(results: &[(stacks::StackPair, algo::Algorithm, usize)], disorder: f64) {
-    let max_name = results
-        .iter()
-        .map(|(_, a, _)| a.name().len())
-        .max()
-        .unwrap();
+pub fn bench_all(results: &[(stacks::StackPair, String, usize)], disorder: f64) {
+    let max_name = results.iter().map(|(_, name, _)| name.len()).max().unwrap();
     let w = max_name + 3; // +1 prefix, +1 colon, +1 space
     let dislabel = format!("{:<w$}", "disorder:");
     eprintln!("[bench] {dislabel}{:.2}%", disorder * 100.0);
-    for (i, (s, algo, pre_opt)) in results.iter().enumerate() {
+    for (i, (s, name, pre_opt)) in results.iter().enumerate() {
         let prefix = if i == 0 { "*" } else { "" };
-        let label = format!("{prefix}{}:", algo);
+        let label = format!("{prefix}{}:", name);
         eprintln!("[bench] {label:<w$}{}({pre_opt})", s.total_ops(),);
     }
 }

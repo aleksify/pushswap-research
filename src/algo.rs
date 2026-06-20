@@ -11,6 +11,7 @@ macro_rules! sort_name {
     };
 }
 
+mod reverse;
 mod sort_bfs;
 mod sort_chunk;
 mod sort_insertion;
@@ -30,6 +31,7 @@ mod sort_turk_lis_chunk;
 mod test_utils;
 mod turk_common;
 
+pub use reverse::reverse_solve;
 pub use sort_bfs::sort_bfs;
 pub use sort_chunk::sort_chunk;
 pub use sort_insertion::sort_insertion;

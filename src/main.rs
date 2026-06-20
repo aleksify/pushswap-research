@@ -96,20 +96,35 @@ fn main() {
         if ranked.len() <= BFS_LIMIT {
             algos.push(Algorithm::Bfs);
         }
-        let handles: Vec<_> = algos
-            .into_iter()
-            .map(|algo| {
-                let mut s = stacks.clone();
-                thread::spawn(move || {
-                    algo.sort()(&mut s);
-                    let pre_opt = s.total_ops();
-                    if !no_opt {
-                        s.set_logs(optimizer::optimize(s.logs().to_vec()));
-                    }
-                    (s, algo, pre_opt)
-                })
-            })
-            .collect();
+        let mut handles = Vec::new();
+        // Forward racers: each algo run on the input directly.
+        for algo in algos {
+            let mut s = stacks.clone();
+            handles.push(thread::spawn(move || {
+                algo.sort()(&mut s);
+                let pre_opt = s.total_ops();
+                if !no_opt {
+                    s.set_logs(optimizer::optimize(s.logs().to_vec()));
+                }
+                (s, algo.name().to_string(), pre_opt)
+            }));
+        }
+        // Reverse twins (idea N2): solve the inverse permutation and
+        // reverse-invert the op sequence. Free orthogonal racer; Bfs is already
+        // optimal so it gets no twin.
+        for algo in Algorithm::ALL {
+            let algo = *algo;
+            let ranked = ranked.clone();
+            let name = format!("{}_rev", algo.name());
+            handles.push(thread::spawn(move || {
+                let mut s = push_swap::algo::reverse_solve(algo.sort(), &ranked);
+                let pre_opt = s.total_ops();
+                if !no_opt {
+                    s.set_logs(optimizer::optimize(s.logs().to_vec()));
+                }
+                (s, name, pre_opt)
+            }));
+        }
 
         let mut results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 
