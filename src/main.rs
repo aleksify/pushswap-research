@@ -1,10 +1,34 @@
-use push_swap::algo::{Algorithm, BFS_LIMIT};
+use push_swap::algo::{Algorithm, BFS_LIMIT, PivotCfg, sort_quick3_with};
 use push_swap::optimizer;
 use push_swap::stacks::StackPair;
 use push_swap::{bench, bench_all, disorder, parse_values, process_and_rank};
 use std::env;
 use std::process;
 use std::thread;
+
+/// Off-default quick3 3-way split ratios raced alongside the stock pivots
+/// (idea H6). Tags label the variant in `--bench`. Chosen from a pivot sweep:
+/// `p344` (A-pivot 3/4) and `p345` (A-pivot 3/5) capture the winners.
+const QUICK3_PIVOT_VARIANTS: &[(&str, PivotCfg)] = &[
+    (
+        "p344",
+        PivotCfg {
+            p2_den: 3,
+            a_p1_num: 3,
+            a_p1_den: 4,
+            b_p1_den: 2,
+        },
+    ),
+    (
+        "p345",
+        PivotCfg {
+            p2_den: 3,
+            a_p1_num: 3,
+            a_p1_den: 5,
+            b_p1_den: 2,
+        },
+    ),
+];
 
 #[derive(Debug)]
 struct Config {
@@ -124,6 +148,32 @@ fn main() {
                 }
                 (s, name, pre_opt)
             }));
+        }
+
+        // quick3 pivot variants (idea H6): race a few alternative 3-way split
+        // ratios. quick3 is the dominant racer, so an off-default split that
+        // partitions some inputs more evenly wins outright. Each variant also
+        // gets a reverse twin (N2 composes with H6).
+        for (tag, cfg) in QUICK3_PIVOT_VARIANTS {
+            for rev in [false, true] {
+                let ranked = ranked.clone();
+                let cfg = *cfg;
+                let name = format!("quick3_{tag}{}", if rev { "_rev" } else { "" });
+                handles.push(thread::spawn(move || {
+                    let mut s = if rev {
+                        push_swap::algo::reverse_solve(|s| sort_quick3_with(s, cfg), &ranked)
+                    } else {
+                        let mut s = StackPair::new(ranked.clone());
+                        sort_quick3_with(&mut s, cfg);
+                        s
+                    };
+                    let pre_opt = s.total_ops();
+                    if !no_opt {
+                        s.set_logs(optimizer::optimize(s.logs().to_vec()));
+                    }
+                    (s, name, pre_opt)
+                }));
+            }
         }
 
         let mut results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();

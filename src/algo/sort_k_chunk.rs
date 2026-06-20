@@ -21,14 +21,24 @@ use crate::stacks::{Operation, RotateExt, StackExt, StackPair};
 
 sort_name!();
 
+/// Default chunk-width factor in tenths: `isqrt(n) * 1.4`.
+pub const DEFAULT_FACTOR_TENTHS: usize = 14;
+
 pub fn sort_k_chunk(stacks: &mut StackPair) {
-    push_chunks_to_b(stacks);
+    sort_k_chunk_with(stacks, DEFAULT_FACTOR_TENTHS);
+}
+
+/// K-chunk with a tunable chunk-width factor (in tenths of `isqrt(n)`), so the
+/// `main.rs` race can search over chunk widths (idea H6). `factor_tenths = 14`
+/// reproduces [`sort_k_chunk`].
+pub fn sort_k_chunk_with(stacks: &mut StackPair, factor_tenths: usize) {
+    push_chunks_to_b(stacks, factor_tenths);
     push_back_to_a(stacks);
 }
 
 /// Push A to B in chunks sized by sqrt(n), smaller values rotate to bottom.
-fn push_chunks_to_b(stacks: &mut StackPair) {
-    let chunk = stacks.a().len().isqrt() * 14 / 10;
+fn push_chunks_to_b(stacks: &mut StackPair, factor_tenths: usize) {
+    let chunk = (stacks.a().len().isqrt() * factor_tenths / 10).max(1);
     let mut pushed = 0;
     while let Some(&val) = stacks.a().front() {
         if val <= pushed {

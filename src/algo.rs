@@ -37,7 +37,7 @@ pub use sort_chunk::sort_chunk;
 pub use sort_insertion::sort_insertion;
 pub use sort_k_chunk::sort_k_chunk;
 pub use sort_quick2::sort_quick2;
-pub use sort_quick3::sort_quick3;
+pub use sort_quick3::{PivotCfg, sort_quick3, sort_quick3_with};
 pub use sort_radix::sort_radix;
 pub use sort_selection::sort_selection;
 pub use sort_turk::sort_turk;

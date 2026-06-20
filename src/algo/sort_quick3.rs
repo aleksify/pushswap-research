@@ -99,7 +99,32 @@ struct Chunk {
     size: usize,
 }
 
+/// Tunable 3-way split ratios (idea H6). Each is a divisor/numerator over the
+/// chunk `size`; [`QUICK3_DEFAULT_PIVOTS`] reproduces the stock hand-tuned split.
+/// The `main.rs` race runs a few configs as extra variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PivotCfg {
+    /// `max`-band width = `size / p2_den`.
+    pub p2_den: usize,
+    /// A-chunk `mid` boundary = `a_p1_num * size / a_p1_den`.
+    pub a_p1_num: usize,
+    pub a_p1_den: usize,
+    /// B-chunk `mid` boundary = `size / b_p1_den`.
+    pub b_p1_den: usize,
+}
+
+pub const QUICK3_DEFAULT_PIVOTS: PivotCfg = PivotCfg {
+    p2_den: 3,
+    a_p1_num: 2,
+    a_p1_den: 3,
+    b_p1_den: 2,
+};
+
 pub fn sort_quick3(stacks: &mut StackPair) {
+    sort_quick3_with(stacks, QUICK3_DEFAULT_PIVOTS);
+}
+
+pub fn sort_quick3_with(stacks: &mut StackPair, cfg: PivotCfg) {
     let n = stacks.a().len();
     if n <= 1 || stacks.is_sorted() {
         return;
@@ -112,7 +137,7 @@ pub fn sort_quick3(stacks: &mut StackPair) {
         loc: Loc::TopA,
         size: n,
     };
-    rec_chunk_sort(stacks, &mut whole, n);
+    rec_chunk_sort(stacks, &mut whole, n, cfg);
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +148,7 @@ pub fn sort_quick3(stacks: &mut StackPair) {
 /// recurse on each bucket. The single algorithm-specific optimization
 /// (`chunk_to_the_top`) wraps the entry; everything else is vanilla
 /// quicksort.
-fn rec_chunk_sort(stacks: &mut StackPair, chunk: &mut Chunk, total_n: usize) {
+fn rec_chunk_sort(stacks: &mut StackPair, chunk: &mut Chunk, total_n: usize, cfg: PivotCfg) {
     chunk_to_the_top(stacks, chunk); // OPT: relabel
     if chunk.size <= 3 {
         match chunk.size {
@@ -134,10 +159,10 @@ fn rec_chunk_sort(stacks: &mut StackPair, chunk: &mut Chunk, total_n: usize) {
         }
         return;
     }
-    let (mut min, mut mid, mut max) = chunk_split(stacks, chunk, total_n);
-    rec_chunk_sort(stacks, &mut max, total_n);
-    rec_chunk_sort(stacks, &mut mid, total_n);
-    rec_chunk_sort(stacks, &mut min, total_n);
+    let (mut min, mut mid, mut max) = chunk_split(stacks, chunk, total_n, cfg);
+    rec_chunk_sort(stacks, &mut max, total_n, cfg);
+    rec_chunk_sort(stacks, &mut mid, total_n, cfg);
+    rec_chunk_sort(stacks, &mut min, total_n, cfg);
 }
 
 /// Single partition step. Pivots split values into 3 buckets:
@@ -153,10 +178,11 @@ fn chunk_split(
     stacks: &mut StackPair,
     to_split: &mut Chunk,
     total_n: usize,
+    cfg: PivotCfg,
 ) -> (Chunk, Chunk, Chunk) {
     let from = to_split.loc;
     let (min_loc, mid_loc, max_loc) = split_locs(from);
-    let (pivot_1, pivot_2) = split_pivots(from, to_split.size);
+    let (pivot_1, pivot_2) = split_pivots(from, to_split.size, cfg);
     let max_value = chunk_max_value(stacks, *to_split);
 
     let mut min = Chunk {
@@ -209,11 +235,11 @@ fn split_locs(from: Loc) -> (Loc, Loc, Loc) {
 /// goes to `max` when `v + pivot_2 > max_value`, i.e. it's in the top
 /// `pivot_2`-wide band). Different shapes for A vs B chunks (different
 /// natural orderings), plus small-size carve-outs.
-fn split_pivots(loc: Loc, size: usize) -> (usize, usize) {
-    let mut pivot_2 = size / 3;
+fn split_pivots(loc: Loc, size: usize, cfg: PivotCfg) -> (usize, usize) {
+    let mut pivot_2 = size / cfg.p2_den;
     let mut pivot_1 = match loc {
-        Loc::TopA | Loc::BottomA => 2 * size / 3,
-        Loc::TopB | Loc::BottomB => size / 2,
+        Loc::TopA | Loc::BottomA => cfg.a_p1_num * size / cfg.a_p1_den,
+        Loc::TopB | Loc::BottomB => size / cfg.b_p1_den,
     };
     // OPT: very small A chunks — collapse `mid` into `max` (pivot_1 == size).
     if matches!(loc, Loc::TopA | Loc::BottomA) && size < 15 {
@@ -444,5 +470,47 @@ mod tests {
     #[test]
     fn random_inputs() {
         assert_sorts_random(&[100, 500], 10, sort_quick3);
+    }
+
+    #[test]
+    fn pivot_variants_sort() {
+        let variants = [
+            PivotCfg {
+                p2_den: 3,
+                a_p1_num: 3,
+                a_p1_den: 4,
+                b_p1_den: 2,
+            },
+            PivotCfg {
+                p2_den: 3,
+                a_p1_num: 3,
+                a_p1_den: 5,
+                b_p1_den: 2,
+            },
+            PivotCfg {
+                p2_den: 4,
+                a_p1_num: 3,
+                a_p1_den: 4,
+                b_p1_den: 2,
+            },
+        ];
+        let mut state: u64 = 0x1357_9BDF_2468_ACE0;
+        let mut next = |bound: usize| {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((state >> 33) as usize) % bound
+        };
+        for cfg in variants {
+            for &n in &[100usize, 500] {
+                for _ in 0..5 {
+                    let mut v: Vec<usize> = (0..n).collect();
+                    for i in (1..n).rev() {
+                        v.swap(i, next(i + 1));
+                    }
+                    let mut s = StackPair::new(v);
+                    sort_quick3_with(&mut s, cfg);
+                    assert!(s.is_sorted(), "{cfg:?} failed to sort");
+                }
+            }
+        }
     }
 }

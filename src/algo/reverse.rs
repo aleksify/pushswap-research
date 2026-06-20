@@ -46,7 +46,7 @@ fn inverse_perm(ranked: &[usize]) -> Vec<usize> {
 /// Returns a [`StackPair`] holding the original input with the transformed log
 /// applied. If the framing is valid the pair is sorted; correctness is also
 /// guarded by the external `checker` in the race.
-pub fn reverse_solve(algo: fn(&mut StackPair), ranked: &[usize]) -> StackPair {
+pub fn reverse_solve<F: Fn(&mut StackPair)>(algo: F, ranked: &[usize]) -> StackPair {
     let mut inv_stacks = StackPair::new(inverse_perm(ranked));
     algo(&mut inv_stacks);
 
