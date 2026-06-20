@@ -2,17 +2,18 @@
 
 This project started as a School 42 assignment - write a program that sorts a stack of integers using a limited set of 11 operations, in as few moves as possible.
 
-I wanted to push further. The journey went roughly like this:
+I tried to go further. The journey went roughly like this:
 
 1. **Multiple algorithms in parallel.** The solver runs different sorting algorithms concurrently on every input and picks whichever produces the shortest output. Different algorithms win on different input distributions.
 2. **A peephole optimizer.** Some algorithms emit sequences with local redundancies - `ra` followed by `rra` cancels out, `ra` followed by `rb` can collapse to `rr`, etc. I wrote a peephole optimizer that post-processes the output, rewriting these patterns away. The first version used a handful of hand-written rules.
-3. **A superoptimizer to generate the rules.** Hand-writing rewrite rules is tedious and incomplete — you'll always miss patterns. So I built a superoptimizer: an exhaustive BFS search over the state space of stack configurations that discovers every reducible operation sequence up to a given depth. The optimizer's rule table is generated at build time from this search.
-4. **Hit the scaling wall.** Past a certain depth, the rule count and binary size explode while the actual gains diminish. This led to thinking about algorithm-specific optimization rather than universal rules — see [Current Issues](#current-issues).
-5. **How low can it go?** Setting solver-building aside, I derived the information-theoretic floor — the fewest operations *any* algorithm could use on a random input — from the effective branching factor of the operation set, then pinned the *true* optimum with exact exhaustive search. See [Theoretical Minimum](#theoretical-minimum).
+3. **A superoptimizer to generate the rules.** Hand-writing rewrite rules is tedious and incomplete, you'll always miss patterns. So I built a superoptimizer: an exhaustive BFS search over the state space of stack configurations that discovers every reducible operation sequence up to a given depth. The optimizer's rule table is generated at build time from this search.
+4. **Hit the scaling wall.** Past a certain depth, the rule count and binary size explode while the actual gains diminish. This led to thinking about algorithm-specific optimization rather than universal rules, see [Current Issues](#current-issues).
+5. **How low can it go?** Derived the information-theoretic floor from the effective branching factor of the operation set, then extrapolated the true optimum with BFS search. See [Theoretical Minimum](#theoretical-minimum).
 
-Potential for further research:
-- behavior at each disorder level, in particular how efficiency of superoptimizer changes
-- n > 500
+### Further research TODO list
+- Behavior at each disorder level, in particular how efficiency of superoptimizer changes.
+- n > 500.
+- Replace BFS algo (sort_bfs, not exact_bfs) with A*, but finding a good heuristic is the hard part (perhaps pattern databases?). Also improve BFS/A* by using meet-in-the-middle.
 
 Table of Contents
 =================
