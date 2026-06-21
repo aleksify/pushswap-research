@@ -1,5 +1,6 @@
-use push_swap::algo::{Algorithm, BFS_LIMIT, PivotCfg, sort_quick3_with};
+use push_swap::algo::{Algorithm, BFS_LIMIT, PivotCfg, QUICK3_DEFAULT_PIVOTS, sort_quick3_with};
 use push_swap::optimizer;
+use push_swap::reopt;
 use push_swap::stacks::StackPair;
 use push_swap::{bench, bench_all, disorder, parse_values, process_and_rank};
 use std::env;
@@ -8,8 +9,21 @@ use std::thread;
 
 /// Off-default quick3 3-way split ratios raced alongside the stock pivots
 /// (idea H6). Tags label the variant in `--bench`. Chosen from a pivot sweep:
-/// `p344` (A-pivot 3/4) and `p345` (A-pivot 3/5) capture the winners.
+/// only the A-pivot ratio matters (p2_den/b_p1_den sweeps never win), so we
+/// race three A-ratios bracketing stock's 2/3 — `p357` (5/7), `p344` (3/4),
+/// `p445` (4/5). This 4-config race (incl. stock) beats the old
+/// stock+3/4+3/5 set by ~9 ops/input at n=500; the old 3/5 variant never won
+/// and was dropped. See `new_algos.md` (H6).
 const QUICK3_PIVOT_VARIANTS: &[(&str, PivotCfg)] = &[
+    (
+        "p357",
+        PivotCfg {
+            p2_den: 3,
+            a_p1_num: 5,
+            a_p1_den: 7,
+            b_p1_den: 2,
+        },
+    ),
     (
         "p344",
         PivotCfg {
@@ -20,10 +34,10 @@ const QUICK3_PIVOT_VARIANTS: &[(&str, PivotCfg)] = &[
         },
     ),
     (
-        "p345",
+        "p445",
         PivotCfg {
             p2_den: 3,
-            a_p1_num: 3,
+            a_p1_num: 4,
             a_p1_den: 5,
             b_p1_den: 2,
         },
@@ -35,6 +49,7 @@ struct Config {
     algo: Option<Algorithm>,
     bench: bool,
     no_opt: bool,
+    n1: bool,
     values: Vec<i32>,
 }
 
@@ -42,12 +57,14 @@ fn parse_args() -> Config {
     let mut algo: Option<Algorithm> = None;
     let mut bench = false;
     let mut no_opt = false;
+    let mut n1 = false;
     let mut value_args = Vec::new();
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
             "--bench" => bench = true,
             "--no-opt" => no_opt = true,
+            "--n1" => n1 = true,
             other if other.starts_with("--") => {
                 let flag = &other[2..];
                 match Algorithm::from_name(flag) {
@@ -62,7 +79,7 @@ fn parse_args() -> Config {
                         let mut names = vec![Algorithm::Bfs.name()];
                         names.extend(Algorithm::ALL.iter().map(|a| a.name()));
                         eprintln!(
-                            "Error: Unknown flag '{other}'. Available: {}, bench, no-opt",
+                            "Error: Unknown flag '{other}'. Available: {}, bench, no-opt, n1",
                             names.join(", ")
                         );
                         process::exit(1);
@@ -82,6 +99,7 @@ fn parse_args() -> Config {
         algo,
         bench,
         no_opt,
+        n1,
         values,
     }
 }
@@ -173,6 +191,41 @@ fn main() {
                     }
                     (s, name, pre_opt)
                 }));
+            }
+        }
+
+        // N1 re-optimized quick3 racers (idea N1, `src/reopt.rs`): solve with
+        // quick3, then replace each size-≤K subtree with the shortest op
+        // sequence found over the rank-compressed window graph. Run on stock +
+        // each pivot variant, forward and reverse — ~-90 ops/input at n=500.
+        // Off by default (the BFS search costs ~0.4s/variant); enable with
+        // `--n1` when op count matters more than latency.
+        if config.n1 {
+            let n1_cfgs: Vec<(String, PivotCfg)> =
+                std::iter::once(("stock".to_string(), QUICK3_DEFAULT_PIVOTS))
+                    .chain(
+                        QUICK3_PIVOT_VARIANTS
+                            .iter()
+                            .map(|(t, c)| (t.to_string(), *c)),
+                    )
+                    .collect();
+            for (tag, cfg) in n1_cfgs {
+                for rev in [false, true] {
+                    let ranked = ranked.clone();
+                    let name = format!("quick3_{tag}_n1{}", if rev { "_rev" } else { "" });
+                    handles.push(thread::spawn(move || {
+                        let mut s = if rev {
+                            reopt::quick3_n1_rev(&ranked, cfg)
+                        } else {
+                            reopt::quick3_n1(&ranked, cfg)
+                        };
+                        let pre_opt = s.total_ops();
+                        if !no_opt {
+                            s.set_logs(optimizer::optimize(s.logs().to_vec()));
+                        }
+                        (s, name, pre_opt)
+                    }));
+                }
             }
         }
 

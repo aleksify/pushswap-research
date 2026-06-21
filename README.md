@@ -53,11 +53,14 @@ Composite operations (`ss`, `rr`, `rrr`) apply to both stacks simultaneously for
 
 By default, the `push_swap` binary runs all available sorting algorithms in parallel (selection, insertion, k_chunk, turk) and picks whichever produces the shortest solution. You can select a specific algorithm with `--turk`, `--selection`, `--insertion`, or `--k_chunk`. Use `--bench` for benchmark output comparing operation counts, and `--no-opt` to disable the optimizer.
 
+`--n1` adds value-aware re-optimization racers: each quick3 variant's output is post-processed by replacing small recursive sub-sorts with provably-shortest op sequences found via bidirectional search over a rank-compressed window graph (`src/reopt.rs`). It saves ~70 ops/input at n=500 (best-mean ~3717 → ~3645) but costs ~0.4s of search per variant, so it's off by default.
+
 ```
 ./push_swap 3 1 2                   # sort, pick best algo
 ./push_swap --turk 3 1 2            # use turk algorithm only
 ./push_swap --bench 3 1 2           # benchmark all algos
 ./push_swap --bench --turk 3 1 2    # benchmark turk only
+./push_swap --n1 3 1 2              # add the (slower) N1 re-optimization racers
 ```
 
 ## Optimizer

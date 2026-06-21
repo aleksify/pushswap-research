@@ -1,5 +1,6 @@
 pub mod algo;
 pub mod optimizer;
+pub mod reopt;
 pub mod stacks;
 
 /// Disorder score in range 0.0..=1.0.

@@ -80,10 +80,49 @@
 //! `move_from_to` routing, sorting all the way down to base cases.
 
 use crate::stacks::{Operation, StackPair};
+use std::cell::RefCell;
 
 use super::sort_three::sort_three;
 
 sort_name!();
+
+// --- N1 subtree-span collector (active only via `sort_quick3_with_spans`) ---
+// Records the op-index span [start, end) of each maximal recursive chunk of
+// size in [2, k]. The re-optimizer (`crate::reopt`) replaces each span with the
+// provably-shortest op sequence reaching the same state. The thread_local is
+// None on every thread except one running the instrumented entry, so stock
+// `sort_quick3` pays only a single Option-check per recursive call.
+/// A recorded subtree: op-index span `[start, end)` plus the chunk's values
+/// (the active set the re-optimizer compresses around).
+pub struct SubtreeSpan {
+    pub start: usize,
+    pub end: usize,
+    pub values: Vec<usize>,
+}
+
+struct SpanCollector {
+    k: usize,
+    guard: usize,
+    spans: Vec<SubtreeSpan>,
+}
+
+thread_local! {
+    static SPANS: RefCell<Option<SpanCollector>> = const { RefCell::new(None) };
+}
+
+/// Run quick3, returning each maximal size-≤k subtree's op-span and values (for
+/// `crate::reopt`). The solved stacks carry the raw (un-reoptimized) log.
+pub fn sort_quick3_with_spans(stacks: &mut StackPair, cfg: PivotCfg, k: usize) -> Vec<SubtreeSpan> {
+    SPANS.with(|c| {
+        *c.borrow_mut() = Some(SpanCollector {
+            k,
+            guard: 0,
+            spans: Vec::new(),
+        })
+    });
+    sort_quick3_with(stacks, cfg);
+    SPANS.with(|c| c.borrow_mut().take().map(|s| s.spans).unwrap_or_default())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Loc {
@@ -149,6 +188,42 @@ pub fn sort_quick3_with(stacks: &mut StackPair, cfg: PivotCfg) {
 /// (`chunk_to_the_top`) wraps the entry; everything else is vanilla
 /// quicksort.
 fn rec_chunk_sort(stacks: &mut StackPair, chunk: &mut Chunk, total_n: usize, cfg: PivotCfg) {
+    // N1: open a span record for the outermost chunk of size in [2, k].
+    let span_open = SPANS.with(|c| {
+        let mut b = c.borrow_mut();
+        let st = b.as_mut()?;
+        if st.guard == 0 && (2..=st.k).contains(&chunk.size) {
+            st.guard = 1;
+            let values: Vec<usize> = (0..chunk.size)
+                .map(|i| chunk_value(stacks, *chunk, i))
+                .collect();
+            Some((stacks.total_ops(), values))
+        } else {
+            if st.guard > 0 {
+                st.guard += 1;
+            }
+            None
+        }
+    });
+    rec_chunk_sort_inner(stacks, chunk, total_n, cfg);
+    SPANS.with(|c| {
+        let mut b = c.borrow_mut();
+        if let Some(st) = b.as_mut() {
+            if let Some((start, values)) = span_open {
+                st.spans.push(SubtreeSpan {
+                    start,
+                    end: stacks.total_ops(),
+                    values,
+                });
+                st.guard = 0;
+            } else if st.guard > 0 {
+                st.guard -= 1;
+            }
+        }
+    });
+}
+
+fn rec_chunk_sort_inner(stacks: &mut StackPair, chunk: &mut Chunk, total_n: usize, cfg: PivotCfg) {
     chunk_to_the_top(stacks, chunk); // OPT: relabel
     if chunk.size <= 3 {
         match chunk.size {
